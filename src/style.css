@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Dark mode overrides ────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Page background */
+html.dark body,
+html.dark .min-h-screen {
+  background-color: #0f172a !important;
+}
+
+/* Card / surface backgrounds */
+html.dark .bg-white {
+  background-color: #1e293b !important;
+}
+html.dark .bg-gray-50 {
+  background-color: #0f172a !important;
+}
+html.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+html.dark .bg-gray-200 {
+  background-color: #334155 !important;
+}
+
+/* Text */
+html.dark .text-gray-800 {
+  color: #f1f5f9 !important;
+}
+html.dark .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+html.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+html.dark .text-gray-500 {
+  color: #64748b !important;
+}
+html.dark .text-gray-400 {
+  color: #475569 !important;
+}
+html.dark .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+/* Borders */
+html.dark .border-gray-100 {
+  border-color: #334155 !important;
+}
+html.dark .border-gray-200 {
+  border-color: #334155 !important;
+}
+html.dark .border-gray-300 {
+  border-color: #475569 !important;
+}
+
+/* Shadows */
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  --tw-shadow-color: rgba(0, 0, 0, 0.5);
+  --tw-shadow:
+    0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);
+  box-shadow: var(--tw-shadow) !important;
+}
+
+/* Inputs & selects */
+html.dark input:not([type="range"]),
+html.dark select,
+html.dark textarea {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+html.dark input[type="month"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+/* Light-tinted backgrounds used in cards */
+html.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+html.dark .bg-green-50 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+html.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+html.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+html.dark .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.12) !important;
+}
+html.dark .bg-orange-50 {
+  background-color: rgba(249, 115, 22, 0.12) !important;
+}
+html.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
+html.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+html.dark .bg-yellow-50 {
+  background-color: rgba(234, 179, 8, 0.12) !important;
+}
+html.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+html.dark .bg-pink-50 {
+  background-color: rgba(236, 72, 153, 0.1) !important;
+}
+
+/* Light-tinted borders */
+html.dark .border-red-100 {
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+html.dark .border-green-100 {
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+html.dark .border-blue-100 {
+  border-color: rgba(59, 130, 246, 0.25) !important;
+}
+html.dark .border-indigo-100 {
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+html.dark .border-purple-100 {
+  border-color: rgba(168, 85, 247, 0.25) !important;
+}
+html.dark .border-orange-100 {
+  border-color: rgba(249, 115, 22, 0.25) !important;
+}
+html.dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+html.dark .border-orange-200 {
+  border-color: rgba(249, 115, 22, 0.3) !important;
+}
+html.dark .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+html.dark .border-indigo-200 {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Hover overrides */
+html.dark .hover\:bg-gray-50:hover {
+  background-color: #1e293b !important;
+}
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #334155 !important;
+}
+html.dark .hover\:bg-gray-200:hover {
+  background-color: #334155 !important;
+}
+
+/* Table */
+html.dark table thead tr th,
+html.dark tfoot tr td {
+  color: #94a3b8;
+}
+html.dark tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Chart.js canvas - keep transparent so gradients show */
+html.dark canvas {
+  filter: brightness(0.92);
+}
