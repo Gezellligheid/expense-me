@@ -17,7 +17,7 @@ const incomes = ref<Income[]>([
 const handleIncomeInput = (index: number) => {
   const income = incomes.value[index];
   // If the last income has an amount, add a new empty income
-  if (index === incomes.value.length - 1 && income.amount) {
+  if (index === incomes.value.length - 1 && income?.amount) {
     incomes.value.push({
       amount: "",
       description: "",

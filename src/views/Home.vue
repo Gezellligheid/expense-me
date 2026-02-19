@@ -130,19 +130,19 @@ const getPreviousMonthsBalance = computed(() => {
   for (let i = 0; i < selectedIndex; i++) {
     const month = allMonths[i];
     const regularExpenses = expenses.value
-      .filter((exp) => exp.date.startsWith(month))
+      .filter((exp) => exp.date.startsWith(month as string))
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
     const recurringExpenses = storageService
-      .calculateRecurringExpensesForMonth(month)
+      .calculateRecurringExpensesForMonth(month as string)
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
     const regularIncome = incomes.value
-      .filter((inc) => inc.date.startsWith(month))
+      .filter((inc) => inc.date.startsWith(month as string))
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
 
     const recurringIncome = storageService
-      .calculateRecurringIncomesForMonth(month)
+      .calculateRecurringIncomesForMonth(month as string)
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
 
     const monthExpenses = regularExpenses + recurringExpenses;
@@ -193,7 +193,10 @@ const saveInitialBalance = () => {
 const selectedMonthName = computed(() => {
   if (!selectedMonth.value) return "";
   const [year, month] = selectedMonth.value.split("-");
-  const date = new Date(parseInt(year), parseInt(month) - 1);
+  const date = new Date(
+    parseInt(year as string),
+    parseInt(month as string) - 1,
+  );
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 });
 
@@ -211,7 +214,11 @@ const expensesByCategory = computed(() => {
 const daysInMonth = computed(() => {
   if (!selectedMonth.value) return 30;
   const [year, month] = selectedMonth.value.split("-");
-  return new Date(parseInt(year), parseInt(month), 0).getDate();
+  return new Date(
+    parseInt(year as string),
+    parseInt(month as string),
+    0,
+  ).getDate();
 });
 
 const averageDailySpending = computed(() => {
@@ -239,11 +246,11 @@ const previousMonthData = computed(() => {
 
   const prevMonth = allMonths[currentIndex - 1];
   const prevRegularExpenses = expenses.value
-    .filter((exp) => exp.date.startsWith(prevMonth))
+    .filter((exp) => exp.date.startsWith(prevMonth as string))
     .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
   const prevRecurringExpenses = storageService
-    .calculateRecurringExpensesForMonth(prevMonth)
+    .calculateRecurringExpensesForMonth(prevMonth as string)
     .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
   const prevExpenses = prevRegularExpenses + prevRecurringExpenses;
@@ -336,7 +343,8 @@ const barChartOptions = computed(() => ({
     legend: { display: false },
     tooltip: {
       callbacks: {
-        label: (ctx: { parsed: { y: number } }) => fmt(ctx.parsed.y ?? 0),
+        label: (ctx: { parsed: { y: number | null } }) =>
+          fmt(ctx.parsed.y ?? 0),
       },
     },
   },

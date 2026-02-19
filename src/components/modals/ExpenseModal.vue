@@ -17,7 +17,7 @@ const expenses = ref<Expense[]>([
 const handleExpenseInput = (index: number) => {
   const expense = expenses.value[index];
   // If the last expense has an amount, add a new empty expense
-  if (index === expenses.value.length - 1 && expense.amount) {
+  if (index === expenses.value.length - 1 && expense?.amount) {
     expenses.value.push({
       amount: "",
       description: "",
