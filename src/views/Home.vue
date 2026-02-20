@@ -248,28 +248,59 @@ const balance = computed(() => {
   return getPreviousMonthsBalance.value + currentMonthBalance;
 });
 
-// ── Current-month budget card ───────────────────────────────────
-const thisMonthYM = (() => {
+// ── Budget card ───────────────────────────────────────────────
+const todayYM = (() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 })();
 
+const nextMonthYM = (() => {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+})();
+
+// Follow the selected range when it covers exactly one month; else today.
+const budgetCardYM = computed(() => {
+  if (
+    rangeStart.value &&
+    rangeEnd.value &&
+    rangeStart.value.slice(0, 7) === rangeEnd.value.slice(0, 7)
+  ) {
+    return rangeStart.value.slice(0, 7);
+  }
+  return todayYM;
+});
+
+const MONTH_NAMES_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const budgetCardLabel = computed(() => {
+  const ym = budgetCardYM.value;
+  if (ym === todayYM) return "This Month Left";
+  if (ym === nextMonthYM) return "Next Month's Budget";
+  const month = parseInt(ym.slice(5, 7)) - 1;
+  return `${MONTH_NAMES_FULL[month]}'s Budget`;
+});
+
 const thisMonthIncome = computed(() => {
   const regular = incomes.value
-    .filter((i) => i.date.startsWith(thisMonthYM))
+    .filter((i) => i.date.startsWith(budgetCardYM.value))
     .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
   const recurring = storageService
-    .calculateRecurringIncomesForMonth(thisMonthYM)
+    .calculateRecurringIncomesForMonth(budgetCardYM.value)
     .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
   return regular + recurring;
 });
 
 const thisMonthExpenses = computed(() => {
   const regular = expenses.value
-    .filter((e) => e.date.startsWith(thisMonthYM))
+    .filter((e) => e.date.startsWith(budgetCardYM.value))
     .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
   const recurring = storageService
-    .calculateRecurringExpensesForMonth(thisMonthYM)
+    .calculateRecurringExpensesForMonth(budgetCardYM.value)
     .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
   return regular + recurring;
 });
@@ -763,7 +794,7 @@ const exportCSV = () => {
       >
         <div class="flex items-center justify-between mb-3">
           <div>
-            <p class="text-white/90 text-sm font-medium">This Month Left</p>
+            <p class="text-white/90 text-sm font-medium">{{ budgetCardLabel }}</p>
             <p class="text-3xl font-bold mt-1">{{ fmt(Math.abs(thisMonthLeft)) }}</p>
             <p class="text-white/80 text-xs mt-1">
               {{ thisMonthLeft >= 0 ? 'under budget' : 'over budget' }}
