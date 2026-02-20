@@ -156,6 +156,33 @@ const incomeDateSet = computed(() => new Set(props.incomeDates ?? []));
 const hasExpense = (d: string) => expenseDateSet.value.has(d);
 const hasIncome = (d: string) => incomeDateSet.value.has(d);
 
+// ── Quick-select helpers ───────────────────────────────────────────
+const selectMonth = (year: number, month: number) => {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const end = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  emit("update:start", start);
+  emit("update:end", end);
+  pendingStart.value = null;
+  open.value = false;
+};
+
+const quickPrevMonth = () => {
+  const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  selectMonth(d.getFullYear(), d.getMonth());
+};
+const quickThisMonth = () => selectMonth(today.getFullYear(), today.getMonth());
+const quickNextMonth = () => {
+  const d = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  selectMonth(d.getFullYear(), d.getMonth());
+};
+const quickThisYear = () => {
+  emit("update:start", `${today.getFullYear()}-01-01`);
+  emit("update:end", `${today.getFullYear()}-12-31`);
+  pendingStart.value = null;
+  open.value = false;
+};
+
 // ── Trigger label ───────────────────────────────────────────────────
 const triggerLabel = computed(() => {
   if (!props.start && !props.end) return "Select date range";
@@ -180,7 +207,7 @@ const triggerLabel = computed(() => {
     <button
       type="button"
       @click="open = !open"
-      class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl shadow-sm hover:border-blue-400 hover:shadow-md transition-all text-sm font-medium text-gray-700 dark:text-gray-200 min-w-[220px] justify-between"
+      class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl shadow-sm hover:border-blue-400 hover:shadow-md transition-all text-sm font-medium text-gray-700 dark:text-gray-200 w-[260px] justify-between"
       :class="
         open ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800' : ''
       "
@@ -399,34 +426,54 @@ const triggerLabel = computed(() => {
           </div>
         </div>
 
-        <!-- Footer: clear button -->
+        <!-- Footer: quick selects + clear -->
         <div
-          class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center"
+          class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3"
         >
-          <button
-            type="button"
-            @click="
-              emit('update:start', '');
-              emit('update:end', '');
-              pendingStart = null;
-            "
-            class="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-          >
-            Clear
-          </button>
-          <span
-            v-if="start && end"
-            class="text-xs text-gray-500 dark:text-gray-400"
-          >
-            {{
-              Math.round(
-                (new Date(end + "T00:00:00").getTime() -
-                  new Date(start + "T00:00:00").getTime()) /
-                  86400000,
-              ) + 1
-            }}
-            days selected
-          </span>
+          <!-- Quick-select buttons -->
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="q in [
+                { label: 'Prev Month', fn: quickPrevMonth },
+                { label: 'This Month', fn: quickThisMonth },
+                { label: 'Next Month', fn: quickNextMonth },
+                { label: 'This Year', fn: quickThisYear },
+              ]"
+              :key="q.label"
+              type="button"
+              @click="q.fn()"
+              class="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:border-blue-300 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            >
+              {{ q.label }}
+            </button>
+          </div>
+          <!-- Clear / days selected -->
+          <div class="flex justify-between items-center">
+            <button
+              type="button"
+              @click="
+                emit('update:start', '');
+                emit('update:end', '');
+                pendingStart = null;
+              "
+              class="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+            >
+              Clear
+            </button>
+            <span
+              v-if="start && end"
+              class="text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{
+                Math.round(
+                  (new Date(end + "T00:00:00").getTime() -
+                    new Date(start + "T00:00:00").getTime()) /
+                    86400000,
+                ) + 1
+              }}
+              days selected
+            </span>
+          </div>
         </div>
       </div>
     </Transition>

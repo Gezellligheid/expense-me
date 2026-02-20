@@ -94,6 +94,15 @@ const selectThisYear = () => {
   rangeEnd.value = `${y}-12-31`;
 };
 
+// Shift the selected range by one month (only when a single-month range is active)
+const shiftMonth = (delta: number) => {
+  const base = rangeStart.value || new Date().toISOString().slice(0, 10);
+  const d = new Date(base + "T00:00:00");
+  d.setDate(1);
+  d.setMonth(d.getMonth() + delta);
+  setMonthRange(d.getFullYear(), d.getMonth());
+};
+
 const loadData = () => {
   expenses.value = storageService.loadExpenses();
   incomes.value = storageService.loadIncomes();
@@ -673,14 +682,34 @@ const exportCSV = () => {
               >This Year</button>
             </div>
             <!-- Custom date range picker -->
-            <DateRangePicker
-              :start="rangeStart"
-              :end="rangeEnd"
-              :expense-dates="allExpenseDates"
-              :income-dates="allIncomeDates"
-              @update:start="rangeStart = $event"
-              @update:end="rangeEnd = $event"
-            />
+            <div class="flex items-center gap-1">
+              <button
+                @click="shiftMonth(-1)"
+                title="Previous month"
+                class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <DateRangePicker
+                :start="rangeStart"
+                :end="rangeEnd"
+                :expense-dates="allExpenseDates"
+                :income-dates="allIncomeDates"
+                @update:start="rangeStart = $event"
+                @update:end="rangeEnd = $event"
+              />
+              <button
+                @click="shiftMonth(1)"
+                title="Next month"
+                class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
