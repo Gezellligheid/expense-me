@@ -97,6 +97,16 @@ export const storageService = {
     this.notifyStorageUpdate();
   },
 
+  updateRecurringExpense(id: string, data: Omit<RecurringExpense, "id">): void {
+    const existing = this.loadRecurringExpenses();
+    const idx = existing.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      existing[idx] = { ...data, id };
+      localStorage.setItem("recurringExpenses", JSON.stringify(existing));
+      this.notifyStorageUpdate();
+    }
+  },
+
   deleteRecurringExpense(id: string): void {
     const existing = this.loadRecurringExpenses();
     const filtered = existing.filter((r) => r.id !== id);
@@ -115,6 +125,17 @@ export const storageService = {
     existing.push(recurring);
     localStorage.setItem("recurringIncomes", JSON.stringify(existing));
     this.notifyStorageUpdate();
+  },
+
+  /** Update a recurring income's base settings without touching its overrides. */
+  updateRecurringIncome(id: string, data: Omit<RecurringIncome, "id">): void {
+    const existing = this.loadRecurringIncomes();
+    const idx = existing.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      existing[idx] = { ...data, id };
+      localStorage.setItem("recurringIncomes", JSON.stringify(existing));
+      this.notifyStorageUpdate();
+    }
   },
 
   deleteRecurringIncome(id: string): void {

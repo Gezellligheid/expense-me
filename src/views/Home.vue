@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import DateRangePicker from "../components/DateRangePicker.vue";
 import {
   storageService,
   type Expense,
@@ -33,10 +34,65 @@ const { formatCurrency: fmt } = useSettings();
 
 const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
-const selectedMonth = ref("");
+const rangeStart = ref("");
+const rangeEnd = ref("");
 const showInitialBalanceModal = ref(false);
 const initialBalanceInput = ref("");
 const initialBalance = ref<number | null>(null);
+
+// ── Date-range helpers ─────────────────────────────────────────────
+const getMonthsInRange = (start: string, end: string): string[] => {
+  const months: string[] = [];
+  if (!start || !end) return months;
+  const cur = new Date(
+    parseInt(start.slice(0, 4)),
+    parseInt(start.slice(5, 7)) - 1,
+    1,
+  );
+  const last = new Date(
+    parseInt(end.slice(0, 4)),
+    parseInt(end.slice(5, 7)) - 1,
+    1,
+  );
+  while (cur <= last) {
+    months.push(
+      `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`,
+    );
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return months;
+};
+
+const setMonthRange = (year: number, month: number) => {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  rangeStart.value = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  rangeEnd.value = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+};
+
+const selectThisMonth = () => {
+  const d = new Date();
+  setMonthRange(d.getFullYear(), d.getMonth());
+};
+
+const selectLastMonth = () => {
+  const d = new Date();
+  const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  setMonthRange(prev.getFullYear(), prev.getMonth());
+};
+
+const selectLast3Months = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  rangeStart.value = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-01`;
+  rangeEnd.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+};
+
+const selectThisYear = () => {
+  const y = new Date().getFullYear();
+  rangeStart.value = `${y}-01-01`;
+  rangeEnd.value = `${y}-12-31`;
+};
 
 const loadData = () => {
   expenses.value = storageService.loadExpenses();
@@ -50,9 +106,9 @@ const handleStorageUpdate = () => {
 
 onMounted(() => {
   loadData();
-  // Set current month as default
+  // Always default to current month
   const today = new Date();
-  selectedMonth.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  setMonthRange(today.getFullYear(), today.getMonth());
   window.addEventListener("storage-updated", handleStorageUpdate);
 });
 
@@ -60,7 +116,7 @@ onUnmounted(() => {
   window.removeEventListener("storage-updated", handleStorageUpdate);
 });
 
-// Get unique months from all transactions
+// Get unique months from all transactions (kept for balance carry-forward calc)
 const availableMonths = computed(() => {
   const allDates = [
     ...expenses.value.map((e) => e.date),
@@ -68,35 +124,69 @@ const availableMonths = computed(() => {
   ];
   const months = new Set(allDates.map((date) => date.substring(0, 7)));
 
-  // Always include the current month if there's no data
-  if (months.size === 0) {
-    const today = new Date();
-    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-    months.add(currentMonth);
-  }
+  // Always include the current and range boundary months
+  const today = new Date();
+  months.add(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+  );
+  if (rangeStart.value) months.add(rangeStart.value.substring(0, 7));
+  if (rangeEnd.value) months.add(rangeEnd.value.substring(0, 7));
 
   return Array.from(months).sort();
 });
 
-// Filter data by selected month
+// Filter data by selected date range
 const filteredExpenses = computed(() => {
-  const regular = expenses.value.filter((exp) =>
-    exp.date.startsWith(selectedMonth.value),
+  const regular = expenses.value.filter(
+    (exp) => exp.date >= rangeStart.value && exp.date <= rangeEnd.value,
   );
-  const recurring = storageService.calculateRecurringExpensesForMonth(
-    selectedMonth.value,
+  const months = getMonthsInRange(rangeStart.value, rangeEnd.value);
+  const recurring = months.flatMap((ym) =>
+    storageService
+      .calculateRecurringExpensesForMonth(ym)
+      .filter((e) => e.date >= rangeStart.value && e.date <= rangeEnd.value),
   );
   return [...regular, ...recurring];
 });
 
 const filteredIncomes = computed(() => {
-  const regular = incomes.value.filter((inc) =>
-    inc.date.startsWith(selectedMonth.value),
+  const regular = incomes.value.filter(
+    (inc) => inc.date >= rangeStart.value && inc.date <= rangeEnd.value,
   );
-  const recurring = storageService.calculateRecurringIncomesForMonth(
-    selectedMonth.value,
+  const months = getMonthsInRange(rangeStart.value, rangeEnd.value);
+  const recurring = months.flatMap((ym) =>
+    storageService
+      .calculateRecurringIncomesForMonth(ym)
+      .filter((i) => i.date >= rangeStart.value && i.date <= rangeEnd.value),
   );
   return [...regular, ...recurring];
+});
+
+// ── Date-dot sets for DateRangePicker indicator circles ────────────────────
+const calendarMonthsForDots = computed(() => {
+  const now = new Date();
+  const months = new Set(availableMonths.value);
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return Array.from(months);
+});
+
+const allExpenseDates = computed(() => {
+  const dates = new Set(expenses.value.map((e) => e.date));
+  calendarMonthsForDots.value.forEach((ym) =>
+    storageService.calculateRecurringExpensesForMonth(ym).forEach((e) => dates.add(e.date)),
+  );
+  return Array.from(dates);
+});
+
+const allIncomeDates = computed(() => {
+  const dates = new Set(incomes.value.map((i) => i.date));
+  calendarMonthsForDots.value.forEach((ym) =>
+    storageService.calculateRecurringIncomesForMonth(ym).forEach((inc) => dates.add(inc.date)),
+  );
+  return Array.from(dates);
 });
 
 // Calculate totals
@@ -114,19 +204,18 @@ const totalIncome = computed(() => {
   );
 });
 
-// Calculate balance from all previous months up to selected month
+// Calculate balance from all months prior to rangeStart
 const getPreviousMonthsBalance = computed(() => {
-  if (!selectedMonth.value) return 0;
+  if (!rangeStart.value) return 0;
 
+  const rangeStartMonth = rangeStart.value.substring(0, 7);
   let cumulativeBalance = initialBalance.value || 0;
 
-  // Get all months sorted
   const allMonths = availableMonths.value;
-  const selectedIndex = allMonths.indexOf(selectedMonth.value);
+  const selectedIndex = allMonths.indexOf(rangeStartMonth);
 
-  if (selectedIndex === -1) return cumulativeBalance;
+  if (selectedIndex <= 0) return cumulativeBalance;
 
-  // Sum up all previous months
   for (let i = 0; i < selectedIndex; i++) {
     const month = allMonths[i];
     const regularExpenses = expenses.value
@@ -189,15 +278,18 @@ const saveInitialBalance = () => {
   closeInitialBalanceModal();
 };
 
-// Get month name
-const selectedMonthName = computed(() => {
-  if (!selectedMonth.value) return "";
-  const [year, month] = selectedMonth.value.split("-");
-  const date = new Date(
-    parseInt(year as string),
-    parseInt(month as string) - 1,
-  );
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+// Range display label
+const selectedRangeLabel = computed(() => {
+  if (!rangeStart.value || !rangeEnd.value) return "";
+  const s = new Date(rangeStart.value + "T00:00:00");
+  const e = new Date(rangeEnd.value + "T00:00:00");
+  if (
+    s.getFullYear() === e.getFullYear() &&
+    s.getMonth() === e.getMonth()
+  ) {
+    return s.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+  return `${s.toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${e.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 });
 
 // Category breakdown for expenses
@@ -211,18 +303,16 @@ const expensesByCategory = computed(() => {
 });
 
 // Monthly insights
-const daysInMonth = computed(() => {
-  if (!selectedMonth.value) return 30;
-  const [year, month] = selectedMonth.value.split("-");
-  return new Date(
-    parseInt(year as string),
-    parseInt(month as string),
-    0,
-  ).getDate();
+// Days in the selected range
+const daysInRange = computed(() => {
+  if (!rangeStart.value || !rangeEnd.value) return 30;
+  const s = new Date(rangeStart.value + "T00:00:00");
+  const e = new Date(rangeEnd.value + "T00:00:00");
+  return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1);
 });
 
 const averageDailySpending = computed(() => {
-  return totalExpenses.value / daysInMonth.value;
+  return totalExpenses.value / daysInRange.value;
 });
 
 const biggestExpense = computed(() => {
@@ -237,10 +327,12 @@ const savingsRate = computed(() => {
   return ((totalIncome.value - totalExpenses.value) / totalIncome.value) * 100;
 });
 
-// Previous month comparison
+// Previous period comparison (month before rangeStart)
 const previousMonthData = computed(() => {
+  if (!rangeStart.value) return null;
+  const rangeStartMonth = rangeStart.value.substring(0, 7);
   const allMonths = availableMonths.value;
-  const currentIndex = allMonths.indexOf(selectedMonth.value);
+  const currentIndex = allMonths.indexOf(rangeStartMonth);
 
   if (currentIndex <= 0) return null;
 
@@ -325,7 +417,7 @@ const barChartData = computed(() => ({
   labels: ["Income", "Expenses"],
   datasets: [
     {
-      label: selectedMonthName.value,
+    label: selectedRangeLabel.value,
       data: [totalIncome.value, totalExpenses.value],
       backgroundColor: ["rgba(34, 197, 94, 0.75)", "rgba(239, 68, 68, 0.75)"],
       borderColor: ["rgb(22, 163, 74)", "rgb(220, 38, 38)"],
@@ -367,7 +459,7 @@ const exportExcel = () => {
 
   // Summary sheet
   const summaryRows = [
-    ["Financial Summary", selectedMonthName.value],
+    ["Financial Summary", selectedRangeLabel.value],
     [],
     ["Metric", "Value"],
     ["Total Income", totalIncome.value],
@@ -404,7 +496,7 @@ const exportExcel = () => {
     XLSX.utils.book_append_sheet(wb, incSheet, "Income");
   }
 
-  XLSX.writeFile(wb, `expenses-${selectedMonth.value}.xlsx`);
+  XLSX.writeFile(wb, `expenses-${rangeStart.value}-${rangeEnd.value}.xlsx`);
 };
 
 // Keep CSV export as an option
@@ -420,7 +512,7 @@ const exportCSV = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `expenses-${selectedMonth.value}.csv`;
+  a.download = `expenses-${rangeStart.value}-${rangeEnd.value}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -494,24 +586,38 @@ const exportCSV = () => {
             </svg>
             CSV
           </button>
-          <label class="text-sm font-medium text-gray-700">Select Month:</label>
-          <select
-            v-model="selectedMonth"
-            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          >
-            <option
-              v-for="month in availableMonths"
-              :key="month"
-              :value="month"
-            >
-              {{
-                new Date(month + "-01").toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })
-              }}
-            </option>
-          </select>
+          <label class="text-sm font-medium text-gray-700 sr-only">Date range</label>
+          <div class="flex flex-col gap-2 items-end">
+            <!-- Quick-select pills -->
+            <div class="flex items-center gap-1.5 flex-wrap justify-end">
+              <span class="text-xs font-medium text-gray-500 mr-0.5">Quick:</span>
+              <button
+                @click="selectThisMonth"
+                class="text-xs px-2.5 py-1 rounded-full border border-blue-300 text-blue-700 hover:bg-blue-500 hover:text-white transition-colors"
+              >This Month</button>
+              <button
+                @click="selectLastMonth"
+                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+              >Last Month</button>
+              <button
+                @click="selectLast3Months"
+                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+              >Last 3 Months</button>
+              <button
+                @click="selectThisYear"
+                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+              >This Year</button>
+            </div>
+            <!-- Custom date range picker -->
+            <DateRangePicker
+              :start="rangeStart"
+              :end="rangeEnd"
+              :expense-dates="allExpenseDates"
+              :income-dates="allIncomeDates"
+              @update:start="rangeStart = $event"
+              @update:end="rangeEnd = $event"
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -12,6 +12,8 @@ const recurringIncomes = ref<RecurringIncome[]>([]);
 const incomeOverrides = ref<RecurringIncomeOverride[]>([]);
 const showExpenseModal = ref(false);
 const showIncomeModal = ref(false);
+const editingExpenseId = ref<string | null>(null);
+const editingIncomeId = ref<string | null>(null);
 
 // ── Override modal state ────────────────────────────────────────────
 const showOverrideModal = ref(false);
@@ -25,6 +27,7 @@ const expenseForm = ref({
   description: "",
   frequency: "monthly" as "daily" | "weekly" | "monthly" | "yearly",
   startDate: storageService.getTodayDate(),
+  endDate: "",
   dayOfMonth: new Date().getDate(),
   dayOfWeek: new Date().getDay(),
 });
@@ -34,6 +37,7 @@ const incomeForm = ref({
   description: "",
   frequency: "monthly" as "daily" | "weekly" | "monthly" | "yearly",
   startDate: storageService.getTodayDate(),
+  endDate: "",
   dayOfMonth: new Date().getDate(),
   dayOfWeek: new Date().getDay(),
 });
@@ -57,26 +61,30 @@ onUnmounted(() => {
   window.removeEventListener("storage-updated", handleStorageUpdate);
 });
 
-const openExpenseModal = () => {
+const openExpenseModal = (expense?: RecurringExpense) => {
+  editingExpenseId.value = expense?.id ?? null;
   expenseForm.value = {
-    amount: "",
-    description: "",
-    frequency: "monthly",
-    startDate: storageService.getTodayDate(),
-    dayOfMonth: new Date().getDate(),
-    dayOfWeek: new Date().getDay(),
+    amount: expense?.amount ?? "",
+    description: expense?.description ?? "",
+    frequency: expense?.frequency ?? "monthly",
+    startDate: expense?.startDate ?? storageService.getTodayDate(),
+    endDate: expense?.endDate ?? "",
+    dayOfMonth: expense?.dayOfMonth ?? new Date().getDate(),
+    dayOfWeek: expense?.dayOfWeek ?? new Date().getDay(),
   };
   showExpenseModal.value = true;
 };
 
-const openIncomeModal = () => {
+const openIncomeModal = (income?: RecurringIncome) => {
+  editingIncomeId.value = income?.id ?? null;
   incomeForm.value = {
-    amount: "",
-    description: "",
-    frequency: "monthly",
-    startDate: storageService.getTodayDate(),
-    dayOfMonth: new Date().getDate(),
-    dayOfWeek: new Date().getDay(),
+    amount: income?.amount ?? "",
+    description: income?.description ?? "",
+    frequency: income?.frequency ?? "monthly",
+    startDate: income?.startDate ?? storageService.getTodayDate(),
+    endDate: income?.endDate ?? "",
+    dayOfMonth: income?.dayOfMonth ?? new Date().getDate(),
+    dayOfWeek: income?.dayOfWeek ?? new Date().getDay(),
   };
   showIncomeModal.value = true;
 };
@@ -84,12 +92,12 @@ const openIncomeModal = () => {
 const saveRecurringExpense = () => {
   if (!expenseForm.value.amount || !expenseForm.value.description) return;
 
-  const recurring: RecurringExpense = {
-    id: Date.now().toString(),
+  const data: Omit<RecurringExpense, "id"> = {
     amount: expenseForm.value.amount,
     description: expenseForm.value.description,
     frequency: expenseForm.value.frequency,
     startDate: expenseForm.value.startDate,
+    endDate: expenseForm.value.endDate || undefined,
     dayOfMonth:
       expenseForm.value.frequency === "monthly"
         ? expenseForm.value.dayOfMonth
@@ -100,7 +108,12 @@ const saveRecurringExpense = () => {
         : undefined,
   };
 
-  storageService.saveRecurringExpense(recurring);
+  if (editingExpenseId.value) {
+    storageService.updateRecurringExpense(editingExpenseId.value, data);
+  } else {
+    storageService.saveRecurringExpense({ ...data, id: Date.now().toString() });
+  }
+  editingExpenseId.value = null;
   showExpenseModal.value = false;
   loadData();
 };
@@ -108,12 +121,12 @@ const saveRecurringExpense = () => {
 const saveRecurringIncome = () => {
   if (!incomeForm.value.amount || !incomeForm.value.description) return;
 
-  const recurring: RecurringIncome = {
-    id: Date.now().toString(),
+  const data: Omit<RecurringIncome, "id"> = {
     amount: incomeForm.value.amount,
     description: incomeForm.value.description,
     frequency: incomeForm.value.frequency,
     startDate: incomeForm.value.startDate,
+    endDate: incomeForm.value.endDate || undefined,
     dayOfMonth:
       incomeForm.value.frequency === "monthly"
         ? incomeForm.value.dayOfMonth
@@ -124,7 +137,13 @@ const saveRecurringIncome = () => {
         : undefined,
   };
 
-  storageService.saveRecurringIncome(recurring);
+  if (editingIncomeId.value) {
+    // updateRecurringIncome preserves existing overrides
+    storageService.updateRecurringIncome(editingIncomeId.value, data);
+  } else {
+    storageService.saveRecurringIncome({ ...data, id: Date.now().toString() });
+  }
+  editingIncomeId.value = null;
   showIncomeModal.value = false;
   loadData();
 };
@@ -277,33 +296,66 @@ const getFrequencyLabel = (frequency: string) => {
               <p class="text-sm text-gray-600 mt-1">
                 ${{ parseFloat(expense.amount).toFixed(2) }}
               </p>
-              <div class="flex items-center gap-2 mt-2">
+              <div class="flex items-center gap-2 mt-2 flex-wrap">
                 <span class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
                   {{ getFrequencyLabel(expense.frequency) }}
                 </span>
                 <span v-if="expense.dayOfMonth" class="text-xs text-gray-500">
                   Day {{ expense.dayOfMonth }} of month
                 </span>
+                <span
+                  v-if="expense.endDate"
+                  class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded"
+                >
+                  ends
+                  {{
+                    new Date(expense.endDate + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      { month: "short", day: "numeric", year: "numeric" },
+                    )
+                  }}
+                </span>
               </div>
             </div>
-            <button
-              @click="deleteExpense(expense.id)"
-              class="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-            >
-              <svg
-                class="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div class="flex items-center gap-1 ml-3 shrink-0">
+              <button
+                @click="openExpenseModal(expense)"
+                class="p-2 text-blue-500 hover:bg-blue-100 rounded-lg transition-colors"
+                title="Edit this expense"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-            </button>
+                <svg
+                  class="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </button>
+              <button
+                @click="deleteExpense(expense.id)"
+                class="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <svg
+                  class="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
         <p v-else class="text-gray-500 text-center py-8">
@@ -342,7 +394,7 @@ const getFrequencyLabel = (frequency: string) => {
               <p class="text-sm text-gray-600 mt-1">
                 ${{ parseFloat(income.amount).toFixed(2) }} (default)
               </p>
-              <div class="flex items-center gap-2 mt-2">
+              <div class="flex items-center gap-2 mt-2 flex-wrap">
                 <span
                   class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded"
                 >
@@ -350,6 +402,18 @@ const getFrequencyLabel = (frequency: string) => {
                 </span>
                 <span v-if="income.dayOfMonth" class="text-xs text-gray-500">
                   Day {{ income.dayOfMonth }} of month
+                </span>
+                <span
+                  v-if="income.endDate"
+                  class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded"
+                >
+                  ends
+                  {{
+                    new Date(income.endDate + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      { month: "short", day: "numeric", year: "numeric" },
+                    )
+                  }}
                 </span>
               </div>
             </div>
@@ -370,6 +434,25 @@ const getFrequencyLabel = (frequency: string) => {
                     stroke-linejoin="round"
                     stroke-width="2"
                     d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </button>
+              <button
+                @click="openIncomeModal(income)"
+                class="p-2 text-blue-500 hover:bg-blue-100 rounded-lg transition-colors"
+                title="Edit this income"
+              >
+                <svg
+                  class="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                   />
                 </svg>
               </button>
@@ -404,15 +487,27 @@ const getFrequencyLabel = (frequency: string) => {
     <div
       v-if="showExpenseModal"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      @click.self="showExpenseModal = false"
+      @click.self="
+        showExpenseModal = false;
+        editingExpenseId = null;
+      "
     >
       <div class="bg-white rounded-lg shadow-2xl max-w-md w-full">
         <div
           class="bg-gradient-to-r from-red-500 to-pink-500 px-6 py-4 flex justify-between items-center"
         >
-          <h2 class="text-xl font-bold text-white">Add Recurring Expense</h2>
+          <h2 class="text-xl font-bold text-white">
+            {{
+              editingExpenseId
+                ? "Edit Recurring Expense"
+                : "Add Recurring Expense"
+            }}
+          </h2>
           <button
-            @click="showExpenseModal = false"
+            @click="
+              showExpenseModal = false;
+              editingExpenseId = null;
+            "
             class="text-white hover:text-red-100"
           >
             <svg
@@ -503,10 +598,59 @@ const getFrequencyLabel = (frequency: string) => {
               <option :value="6">Saturday</option>
             </select>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >End Date
+              <span class="text-gray-400 font-normal"
+                >(optional — leave blank to repeat forever)</span
+              ></label
+            >
+            <div class="flex items-center gap-2">
+              <input
+                v-model="expenseForm.endDate"
+                type="date"
+                :min="expenseForm.startDate"
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+              />
+              <button
+                v-if="expenseForm.endDate"
+                type="button"
+                @click="expenseForm.endDate = ''"
+                class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Remove end date"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p v-if="expenseForm.endDate" class="mt-1 text-xs text-red-600">
+              Recurring will stop after
+              {{
+                new Date(expenseForm.endDate + "T00:00:00").toLocaleDateString(
+                  "en-US",
+                  { month: "short", day: "numeric", year: "numeric" },
+                )
+              }}
+            </p>
+          </div>
         </div>
         <div class="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
           <button
-            @click="showExpenseModal = false"
+            @click="
+              showExpenseModal = false;
+              editingExpenseId = null;
+            "
             class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
           >
             Cancel
@@ -516,7 +660,7 @@ const getFrequencyLabel = (frequency: string) => {
             :disabled="!expenseForm.amount || !expenseForm.description"
             class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
           >
-            Save
+            {{ editingExpenseId ? "Update" : "Save" }}
           </button>
         </div>
       </div>
@@ -526,15 +670,25 @@ const getFrequencyLabel = (frequency: string) => {
     <div
       v-if="showIncomeModal"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      @click.self="showIncomeModal = false"
+      @click.self="
+        showIncomeModal = false;
+        editingIncomeId = null;
+      "
     >
       <div class="bg-white rounded-lg shadow-2xl max-w-md w-full">
         <div
           class="bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-4 flex justify-between items-center"
         >
-          <h2 class="text-xl font-bold text-white">Add Recurring Income</h2>
+          <h2 class="text-xl font-bold text-white">
+            {{
+              editingIncomeId ? "Edit Recurring Income" : "Add Recurring Income"
+            }}
+          </h2>
           <button
-            @click="showIncomeModal = false"
+            @click="
+              showIncomeModal = false;
+              editingIncomeId = null;
+            "
             class="text-white hover:text-green-100"
           >
             <svg
@@ -625,10 +779,59 @@ const getFrequencyLabel = (frequency: string) => {
               <option :value="6">Saturday</option>
             </select>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >End Date
+              <span class="text-gray-400 font-normal"
+                >(optional — leave blank to repeat forever)</span
+              ></label
+            >
+            <div class="flex items-center gap-2">
+              <input
+                v-model="incomeForm.endDate"
+                type="date"
+                :min="incomeForm.startDate"
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+              />
+              <button
+                v-if="incomeForm.endDate"
+                type="button"
+                @click="incomeForm.endDate = ''"
+                class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Remove end date"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p v-if="incomeForm.endDate" class="mt-1 text-xs text-green-700">
+              Recurring will stop after
+              {{
+                new Date(incomeForm.endDate + "T00:00:00").toLocaleDateString(
+                  "en-US",
+                  { month: "short", day: "numeric", year: "numeric" },
+                )
+              }}
+            </p>
+          </div>
         </div>
         <div class="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
           <button
-            @click="showIncomeModal = false"
+            @click="
+              showIncomeModal = false;
+              editingIncomeId = null;
+            "
             class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
           >
             Cancel
@@ -638,7 +841,7 @@ const getFrequencyLabel = (frequency: string) => {
             :disabled="!incomeForm.amount || !incomeForm.description"
             class="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
           >
-            Save
+            {{ editingIncomeId ? "Update" : "Save" }}
           </button>
         </div>
       </div>

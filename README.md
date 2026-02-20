@@ -13,10 +13,12 @@ A personal finance tracker built with Vue 3. Track your income and expenses mont
 - **Bar chart** comparing income vs. expenses side by side
 - Monthly insights: average daily spending, biggest expense, savings rate, and comparison against the previous month
 - Set an optional starting balance to track your overall financial position over time
+- **Custom date range picker** — select any arbitrary start/end date with a two-month calendar panel. Days that have an expense (or recurring expense) show a red dot; days with income (or recurring income) show a green dot
 
 ### 🔁 Recurring Transactions
 
 - Define recurring expenses and incomes that automatically appear in every month
+- **Optional end date** — set a stop date on any recurring rule so it cancels automatically on that day; clear it at any time with the × button
 - **Per-month income overrides** — because income isn't always the same. Set a different amount for any specific month without touching the recurring rule
 - Visual badge showing how many overrides exist per recurring income
 - Override modal with diff indicators (▲ higher / ▼ lower than the base amount)
