@@ -232,7 +232,7 @@ const getFrequencyLabel = (frequency: string) => {
         </div>
         <div class="flex gap-3">
           <button
-            @click="openExpenseModal"
+            @click="() => openExpenseModal()"
             class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
           >
             <svg
@@ -251,7 +251,7 @@ const getFrequencyLabel = (frequency: string) => {
             Recurring Expense
           </button>
           <button
-            @click="openIncomeModal"
+            @click="() => openIncomeModal()"
             class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
           >
             <svg
