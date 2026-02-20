@@ -220,20 +220,22 @@ const getFrequencyLabel = (frequency: string) => {
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <div class="flex items-center justify-between">
+    <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
+      <div
+        class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+      >
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">
+          <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
             Recurring Transactions
           </h2>
           <p class="text-sm text-gray-600 mt-1">
             Set up automatic expenses and income
           </p>
         </div>
-        <div class="flex gap-3">
+        <div class="flex flex-col xs:flex-row gap-2 sm:flex-row sm:shrink-0">
           <button
             @click="() => openExpenseModal()"
-            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+            class="w-full sm:w-auto px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
           >
             <svg
               class="w-5 h-5"
@@ -252,7 +254,7 @@ const getFrequencyLabel = (frequency: string) => {
           </button>
           <button
             @click="() => openIncomeModal()"
-            class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+            class="w-full sm:w-auto px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
           >
             <svg
               class="w-5 h-5"

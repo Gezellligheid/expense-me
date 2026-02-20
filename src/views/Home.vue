@@ -635,10 +635,11 @@ const exportCSV = () => {
 <template>
   <div class="space-y-6">
     <!-- Month Selector and Initial Balance -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <div class="flex items-center gap-4">
-          <h2 class="text-2xl font-bold text-gray-800">Financial Overview</h2>
+    <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
+      <div class="flex flex-col gap-4">
+        <!-- Row 1: title + initial balance -->
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <h2 class="text-xl sm:text-2xl font-bold text-gray-800">Financial Overview</h2>
           <button
             @click="openInitialBalanceModal"
             class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
@@ -659,51 +660,56 @@ const exportCSV = () => {
             {{ initialBalance !== null ? "Edit" : "Set" }} Initial Balance
           </button>
         </div>
-        <div class="flex items-center gap-3">
-          <button
-            @click="exportExcel"
-            class="text-sm px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-2"
-            title="Export as Excel (.xlsx)"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+        <!-- Row 2: exports + date range -->
+        <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+          <!-- Export buttons -->
+          <div class="flex items-center gap-2">
+            <button
+              @click="exportExcel"
+              class="text-sm px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-2"
+              title="Export as Excel (.xlsx)"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            Excel
-          </button>
-          <button
-            @click="exportCSV"
-            class="text-sm px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-            title="Export as CSV"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              Excel
+            </button>
+            <button
+              @click="exportCSV"
+              class="text-sm px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+              title="Export as CSV"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            CSV
-          </button>
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              CSV
+            </button>
+          </div>
+          <!-- Date range section -->
           <label class="text-sm font-medium text-gray-700 sr-only">Date range</label>
-          <div class="flex flex-col gap-2 items-end">
+          <div class="flex flex-col gap-2 sm:ml-auto">
             <!-- Quick-select pills -->
-            <div class="flex items-center gap-1.5 flex-wrap justify-end">
+            <div class="flex items-center gap-1.5 flex-wrap">
               <span class="text-xs font-medium text-gray-500 mr-0.5">Quick:</span>
               <button
                 @click="selectThisMonth"

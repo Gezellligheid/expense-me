@@ -25,26 +25,28 @@ async function handleSignIn() {
 </script>
 
 <template>
+  <!-- Full-screen gradient background -->
   <div
-    class="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center px-4"
+    class="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-stretch sm:items-center justify-center"
   >
+    <!-- Card: fullscreen on mobile, floating card on sm+ -->
     <div
-      class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-sm text-center"
+      class="bg-white dark:bg-gray-900 w-full min-h-screen flex flex-col justify-center sm:min-h-0 sm:rounded-2xl sm:shadow-2xl sm:max-w-md sm:mx-4 sm:border sm:border-white/20 px-8 py-12 text-center"
     >
       <!-- Logo -->
-      <div class="text-5xl mb-4">💰</div>
-      <h1 class="text-2xl font-bold text-gray-800 dark:text-white mb-1">
+      <div class="text-6xl mb-5">💰</div>
+      <h1 class="text-3xl font-bold text-gray-800 dark:text-white mb-2">
         Expense-me
       </h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">
+      <p class="text-gray-500 dark:text-gray-400 mb-10">
         Track your finances across all your devices
       </p>
 
       <!-- Migration note -->
       <div
-        class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-6 text-left"
+        class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-4 mb-6 text-left"
       >
-        <p class="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+        <p class="text-sm text-blue-700 dark:text-blue-300 leading-relaxed">
           <span class="font-semibold">Already using Expense-me?</span> Sign in
           and your existing data will be automatically saved to your account.
         </p>
@@ -53,7 +55,7 @@ async function handleSignIn() {
       <!-- Error -->
       <div
         v-if="error"
-        class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-3 mb-4 text-sm text-red-600 dark:text-red-400"
+        class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl p-4 mb-4 text-sm text-red-600 dark:text-red-400"
       >
         {{ error }}
       </div>
@@ -62,9 +64,9 @@ async function handleSignIn() {
       <button
         @click="handleSignIn"
         :disabled="isSigningIn"
-        class="w-full flex items-center justify-center gap-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium py-3 px-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+        class="w-full flex items-center justify-center gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-4 px-4 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed text-base"
       >
-        <!-- Google "G" SVG -->
+        <!-- Google G -->
         <svg
           v-if="!isSigningIn"
           class="w-5 h-5 shrink-0"
@@ -113,7 +115,7 @@ async function handleSignIn() {
         <span>{{ isSigningIn ? "Signing in…" : "Continue with Google" }}</span>
       </button>
 
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6">
+      <p class="text-xs text-gray-400 dark:text-gray-600 mt-8">
         Your data is stored securely and synced in real time.
       </p>
     </div>

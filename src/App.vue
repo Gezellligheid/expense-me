@@ -5,9 +5,11 @@ import Navbar from "./components/navbar/Navbar.vue";
 import Login from "./views/Login.vue";
 import { useSettings } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
+import { useSidebar } from "./composables/useSidebar";
 
 const { theme, initTheme } = useSettings();
 const { user, isLoadingAuth } = useAuth();
+const { isCollapsed } = useSidebar();
 
 onMounted(() => {
   initTheme();
@@ -46,10 +48,19 @@ watch(theme, () => {
   <Login v-else-if="!user" />
 
   <!-- App -->
-  <div v-else class="min-h-screen bg-gray-50">
+  <div v-else class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <Navbar />
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <RouterView />
+    <!-- Offset for sidebar on desktop, top bar on mobile -->
+    <main
+      :class="[
+        'transition-all duration-300 ease-in-out',
+        'pt-14 md:pt-0',
+        isCollapsed ? 'md:ml-16' : 'md:ml-60',
+      ]"
+    >
+      <div class="p-4 sm:p-6 lg:p-8">
+        <RouterView />
+      </div>
     </main>
   </div>
 </template>
