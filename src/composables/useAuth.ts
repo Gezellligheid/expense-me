@@ -19,9 +19,18 @@ const isLoadingAuth = ref(true);
 onAuthStateChanged(auth, async (firebaseUser) => {
   if (firebaseUser) {
     user.value = firebaseUser;
-    // Migrate any existing localStorage data, then start real-time sync
-    await migrateLocalStorage(firebaseUser.uid);
-    initCloudSync(firebaseUser.uid);
+    try {
+      // Migrate any existing localStorage data, then start real-time sync
+      await migrateLocalStorage(firebaseUser.uid);
+      initCloudSync(firebaseUser.uid);
+    } catch (err) {
+      // Migration/sync failing should never block the user from using the app.
+      // The app will fall back to localStorage-only mode for this session.
+      console.warn(
+        "[useAuth] Cloud sync init failed, continuing offline:",
+        err,
+      );
+    }
   } else {
     user.value = null;
     stopCloudSync();

@@ -43,29 +43,38 @@ function userDoc(uid: string, key: SyncKey) {
  */
 export async function migrateLocalStorage(uid: string): Promise<void> {
   for (const key of SYNC_KEYS) {
-    const ref = userDoc(uid, key);
-    const snap = await getDoc(ref);
+    try {
+      const ref = userDoc(uid, key);
+      const snap = await getDoc(ref);
 
-    if (snap.exists()) {
-      // Cloud has data → restore it locally
-      const value = snap.data()["value"];
-      if (value !== undefined && value !== null) {
-        const serialized =
-          typeof value === "string" ? value : JSON.stringify(value);
-        localStorage.setItem(key, serialized);
-      }
-    } else {
-      // Cloud is empty → migrate local data up
-      const local = localStorage.getItem(key);
-      if (local !== null) {
-        let value: unknown;
-        try {
-          value = JSON.parse(local);
-        } catch {
-          value = local;
+      if (snap.exists()) {
+        // Cloud has data → restore it locally
+        const value = snap.data()["value"];
+        if (value !== undefined && value !== null) {
+          const serialized =
+            typeof value === "string" ? value : JSON.stringify(value);
+          localStorage.setItem(key, serialized);
         }
-        await setDoc(ref, { value });
+      } else {
+        // Cloud is empty → migrate local data up (new users with no local data skip this)
+        const local = localStorage.getItem(key);
+        if (local !== null) {
+          let value: unknown;
+          try {
+            value = JSON.parse(local);
+          } catch {
+            value = local;
+          }
+          await setDoc(ref, { value });
+        }
+        // If both cloud and local are empty, nothing to do — this is a brand new user
       }
+    } catch (err) {
+      // A single key failing (e.g. permission denied) should not abort all others
+      console.warn(
+        `[cloudSync] migrateLocalStorage failed for key "${key}":`,
+        err,
+      );
     }
   }
   notify();
