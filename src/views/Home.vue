@@ -220,33 +220,47 @@ const getPreviousMonthsBalance = computed(() => {
   const rangeStartMonth = rangeStart.value.substring(0, 7);
   let cumulativeBalance = initialBalance.value || 0;
 
-  const allMonths = availableMonths.value;
-  const selectedIndex = allMonths.indexOf(rangeStartMonth);
+  // Build the earliest month to start from: the smallest of all one-off
+  // transaction dates AND all recurring rule startDates, so months that
+  // contain ONLY recurring transactions are never skipped.
+  const allStartDates = [
+    ...expenses.value.map((e) => e.date.substring(0, 7)),
+    ...incomes.value.map((i) => i.date.substring(0, 7)),
+    ...storageService.loadRecurringExpenses().map((r) => r.startDate.substring(0, 7)),
+    ...storageService.loadRecurringIncomes().map((r) => r.startDate.substring(0, 7)),
+  ];
+  if (allStartDates.length === 0) return cumulativeBalance;
 
-  if (selectedIndex <= 0) return cumulativeBalance;
+  const earliestMonth = allStartDates.sort()[0]!;
+  if (earliestMonth >= rangeStartMonth) return cumulativeBalance;
 
-  for (let i = 0; i < selectedIndex; i++) {
-    const month = allMonths[i];
+  // Walk every calendar month from earliest up to (but not including) rangeStart
+  const [ey, em] = earliestMonth.split("-").map(Number) as [number, number];
+  const [ry, rm] = rangeStartMonth.split("-").map(Number) as [number, number];
+  let year = ey;
+  let month = em; // 1-indexed
+
+  while (year < ry || (year === ry && month < rm)) {
+    const ym = `${year}-${String(month).padStart(2, "0")}`;
+
     const regularExpenses = expenses.value
-      .filter((exp) => exp.date.startsWith(month as string))
+      .filter((exp) => exp.date.startsWith(ym))
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
-
     const recurringExpenses = storageService
-      .calculateRecurringExpensesForMonth(month as string)
+      .calculateRecurringExpensesForMonth(ym)
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
     const regularIncome = incomes.value
-      .filter((inc) => inc.date.startsWith(month as string))
+      .filter((inc) => inc.date.startsWith(ym))
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
-
     const recurringIncome = storageService
-      .calculateRecurringIncomesForMonth(month as string)
+      .calculateRecurringIncomesForMonth(ym)
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
 
-    const monthExpenses = regularExpenses + recurringExpenses;
-    const monthIncome = regularIncome + recurringIncome;
+    cumulativeBalance += (regularIncome + recurringIncome) - (regularExpenses + recurringExpenses);
 
-    cumulativeBalance += monthIncome - monthExpenses;
+    if (month === 12) { month = 1; year++; }
+    else { month++; }
   }
 
   return cumulativeBalance;
