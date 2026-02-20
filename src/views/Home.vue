@@ -248,6 +248,39 @@ const balance = computed(() => {
   return getPreviousMonthsBalance.value + currentMonthBalance;
 });
 
+// ── Current-month budget card ───────────────────────────────────
+const thisMonthYM = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+})();
+
+const thisMonthIncome = computed(() => {
+  const regular = incomes.value
+    .filter((i) => i.date.startsWith(thisMonthYM))
+    .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+  const recurring = storageService
+    .calculateRecurringIncomesForMonth(thisMonthYM)
+    .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+  return regular + recurring;
+});
+
+const thisMonthExpenses = computed(() => {
+  const regular = expenses.value
+    .filter((e) => e.date.startsWith(thisMonthYM))
+    .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+  const recurring = storageService
+    .calculateRecurringExpensesForMonth(thisMonthYM)
+    .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+  return regular + recurring;
+});
+
+const thisMonthLeft = computed(() => thisMonthIncome.value - thisMonthExpenses.value);
+const thisMonthSpendPct = computed(() =>
+  thisMonthIncome.value > 0
+    ? Math.min(100, (thisMonthExpenses.value / thisMonthIncome.value) * 100)
+    : 0,
+);
+
 const openInitialBalanceModal = () => {
   initialBalanceInput.value = initialBalance.value?.toString() || "";
   showInitialBalanceModal.value = true;
@@ -623,7 +656,7 @@ const exportCSV = () => {
     </div>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       <!-- Income Card -->
       <div
         class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white"
@@ -716,6 +749,44 @@ const exportCSV = () => {
               d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
+        </div>
+      </div>
+
+      <!-- This Month Budget Card -->
+      <div
+        :class="[
+          'rounded-lg shadow-lg p-6 text-white',
+          thisMonthLeft >= 0
+            ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
+            : 'bg-gradient-to-br from-rose-500 to-red-600',
+        ]"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <p class="text-white/90 text-sm font-medium">This Month Left</p>
+            <p class="text-3xl font-bold mt-1">{{ fmt(Math.abs(thisMonthLeft)) }}</p>
+            <p class="text-white/80 text-xs mt-1">
+              {{ thisMonthLeft >= 0 ? 'under budget' : 'over budget' }}
+            </p>
+          </div>
+          <svg class="w-12 h-12 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <!-- Spend progress bar -->
+        <div class="mt-2">
+          <div class="flex justify-between text-xs text-white/75 mb-1">
+            <span>{{ fmt(thisMonthExpenses) }} spent</span>
+            <span>of {{ fmt(thisMonthIncome) }}</span>
+          </div>
+          <div class="w-full bg-white/20 rounded-full h-1.5">
+            <div
+              class="h-1.5 rounded-full transition-all duration-500"
+              :class="thisMonthSpendPct >= 100 ? 'bg-red-300' : 'bg-white/80'"
+              :style="{ width: thisMonthSpendPct + '%' }"
+            />
+          </div>
         </div>
       </div>
     </div>
