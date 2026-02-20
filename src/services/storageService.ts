@@ -57,6 +57,16 @@ export const storageService = {
     this.notifyStorageUpdate();
   },
 
+  deleteExpense(expense: Expense): void {
+    const existing = this.loadExpenses();
+    const idx = existing.findIndex(
+      (e) => e.date === expense.date && e.description === expense.description && e.amount === expense.amount,
+    );
+    if (idx !== -1) existing.splice(idx, 1);
+    localStorage.setItem("expenses", JSON.stringify(existing));
+    this.notifyStorageUpdate();
+  },
+
   // Income operations
   loadIncomes(): Income[] {
     const stored = localStorage.getItem("incomes");
@@ -71,6 +81,16 @@ export const storageService = {
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
     localStorage.setItem("incomes", JSON.stringify(combined));
+    this.notifyStorageUpdate();
+  },
+
+  deleteIncome(income: Income): void {
+    const existing = this.loadIncomes();
+    const idx = existing.findIndex(
+      (i) => i.date === income.date && i.description === income.description && i.amount === income.amount,
+    );
+    if (idx !== -1) existing.splice(idx, 1);
+    localStorage.setItem("incomes", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 

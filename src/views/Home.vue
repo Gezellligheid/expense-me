@@ -379,6 +379,33 @@ const selectedRangeLabel = computed(() => {
   return `${s.toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${e.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 });
 
+// ── Transaction history (manual only) ──────────────────────────────────
+const manualExpenses = computed(() =>
+  expenses.value
+    .filter((e) => e.date >= rangeStart.value && e.date <= rangeEnd.value)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date)),
+);
+
+const manualIncomes = computed(() =>
+  incomes.value
+    .filter((i) => i.date >= rangeStart.value && i.date <= rangeEnd.value)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date)),
+);
+
+const historyTab = ref<'expenses' | 'incomes'>('expenses');
+
+const removeExpense = (exp: Expense) => {
+  storageService.deleteExpense(exp);
+  loadData();
+};
+
+const removeIncome = (inc: Income) => {
+  storageService.deleteIncome(inc);
+  loadData();
+};
+
 // Category breakdown for expenses
 const expensesByCategory = computed(() => {
   const categories: Record<string, number> = {};
@@ -978,60 +1005,123 @@ const exportCSV = () => {
       </div>
     </div>
 
-    <!-- Recent Transactions -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Recent Expenses -->
-      <div class="bg-white rounded-lg shadow-md p-6">
-        <h3 class="text-lg font-bold text-gray-800 mb-4">Recent Expenses</h3>
-        <div v-if="filteredExpenses.length > 0" class="space-y-3">
-          <div
-            v-for="(expense, index) in filteredExpenses.slice(-5).reverse()"
-            :key="index"
-            class="flex justify-between items-center p-3 bg-red-50 rounded-lg"
-          >
-            <div>
-              <p class="font-medium text-gray-800">
-                {{ expense.description || "Uncategorized" }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ new Date(expense.date).toLocaleDateString() }}
-              </p>
-            </div>
-            <span class="text-red-600 font-bold">{{
-              fmt(parseFloat(expense.amount))
-            }}</span>
-          </div>
-        </div>
-        <p v-else class="text-gray-500 text-center py-8">
-          No expenses for this month
-        </p>
+    <!-- Transaction History -->
+    <div id="history" class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">Transaction History</h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500">Manual transactions only</span>
       </div>
 
-      <!-- Recent Incomes -->
-      <div class="bg-white rounded-lg shadow-md p-6">
-        <h3 class="text-lg font-bold text-gray-800 mb-4">Recent Income</h3>
-        <div v-if="filteredIncomes.length > 0" class="space-y-3">
-          <div
-            v-for="(income, index) in filteredIncomes.slice(-5).reverse()"
-            :key="index"
-            class="flex justify-between items-center p-3 bg-green-50 rounded-lg"
-          >
-            <div>
-              <p class="font-medium text-gray-800">
-                {{ income.description || "Uncategorized" }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ new Date(income.date).toLocaleDateString() }}
-              </p>
-            </div>
-            <span class="text-green-600 font-bold">{{
-              fmt(parseFloat(income.amount))
-            }}</span>
+      <!-- Summary mini-cards -->
+      <div class="grid grid-cols-2 gap-3 mb-5">
+        <div class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0">
+            <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+            </svg>
+          </div>
+          <div>
+            <p class="text-xs text-red-500 dark:text-red-400 font-medium">{{ manualExpenses.length }} Expenses</p>
+            <p class="text-base font-bold text-red-700 dark:text-red-300">{{ fmt(manualExpenses.reduce((s,e) => s + parseFloat(e.amount||'0'), 0)) }}</p>
           </div>
         </div>
-        <p v-else class="text-gray-500 text-center py-8">
-          No income for this month
-        </p>
+        <div class="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0">
+            <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+            </svg>
+          </div>
+          <div>
+            <p class="text-xs text-green-500 dark:text-green-400 font-medium">{{ manualIncomes.length }} Incomes</p>
+            <p class="text-base font-bold text-green-700 dark:text-green-300">{{ fmt(manualIncomes.reduce((s,i) => s + parseFloat(i.amount||'0'), 0)) }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit">
+        <button
+          @click="historyTab = 'expenses'"
+          :class="historyTab === 'expenses'
+            ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-sm'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+        >Expenses</button>
+        <button
+          @click="historyTab = 'incomes'"
+          :class="historyTab === 'incomes'
+            ? 'bg-white dark:bg-gray-700 text-green-600 dark:text-green-400 shadow-sm'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+        >Incomes</button>
+      </div>
+
+      <!-- Expense rows -->
+      <div v-if="historyTab === 'expenses'">
+        <div v-if="manualExpenses.length > 0" class="space-y-2">
+          <div
+            v-for="(exp, idx) in manualExpenses"
+            :key="idx"
+            class="flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl group"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold">
+                {{ exp.description ? exp.description[0]!.toUpperCase() : '?' }}
+              </div>
+              <div class="min-w-0">
+                <p class="font-medium text-gray-800 dark:text-gray-100 truncate">{{ exp.description || 'Uncategorized' }}</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{ new Date(exp.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0 ml-3">
+              <span class="font-bold text-red-600 dark:text-red-400">{{ fmt(parseFloat(exp.amount)) }}</span>
+              <button
+                @click="removeExpense(exp)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                title="Remove"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <p v-else class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm">No manual expenses in this range</p>
+      </div>
+
+      <!-- Income rows -->
+      <div v-if="historyTab === 'incomes'">
+        <div v-if="manualIncomes.length > 0" class="space-y-2">
+          <div
+            v-for="(inc, idx) in manualIncomes"
+            :key="idx"
+            class="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl group"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold">
+                {{ inc.description ? inc.description[0]!.toUpperCase() : '?' }}
+              </div>
+              <div class="min-w-0">
+                <p class="font-medium text-gray-800 dark:text-gray-100 truncate">{{ inc.description || 'Uncategorized' }}</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{ new Date(inc.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0 ml-3">
+              <span class="font-bold text-green-600 dark:text-green-400">{{ fmt(parseFloat(inc.amount)) }}</span>
+              <button
+                @click="removeIncome(inc)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                title="Remove"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <p v-else class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm">No manual income in this range</p>
       </div>
     </div>
   </div>
