@@ -2,6 +2,9 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import ExpenseModal from "../modals/ExpenseModal.vue";
 import IncomeModal from "../modals/IncomeModal.vue";
+import { useAuth } from "../../composables/useAuth";
+
+const { user, signOut } = useAuth();
 
 const showAddMenu = ref(false);
 const showExpenseModal = ref(false);
@@ -173,39 +176,16 @@ const closeIncomeModal = () => {
           </router-link>
         </div>
 
-        <!-- Add Button (with dropdown) -->
-        <div class="relative" ref="addMenuRef">
-          <button
-            @click="toggleAddMenu"
-            class="bg-white text-blue-600 hover:bg-blue-50 font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200 flex items-center gap-2 hover:scale-105"
-          >
-            <svg
-              class="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span>Add New</span>
-          </button>
-
-          <!-- Dropdown Menu -->
-          <div
-            v-if="showAddMenu"
-            class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100"
-          >
+        <!-- Right side: Add button + user avatar -->
+        <div class="flex items-center gap-3">
+          <!-- Add Button (with dropdown) -->
+          <div class="relative" ref="addMenuRef">
             <button
-              @click="openExpenseModal"
-              class="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors duration-150 flex items-center gap-3"
+              @click="toggleAddMenu"
+              class="bg-white text-blue-600 hover:bg-blue-50 font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200 flex items-center gap-2 hover:scale-105"
             >
               <svg
-                class="w-5 h-5 text-red-500"
+                class="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -214,21 +194,96 @@ const closeIncomeModal = () => {
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                  d="M12 4v16m8-8H4"
                 />
               </svg>
-              <div>
-                <div class="font-semibold text-gray-800">Add Expense</div>
-                <div class="text-xs text-gray-500">Record a payment</div>
-              </div>
+              <span>Add New</span>
             </button>
 
+            <!-- Dropdown Menu -->
+            <div
+              v-if="showAddMenu"
+              class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100"
+            >
+              <button
+                @click="openExpenseModal"
+                class="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors duration-150 flex items-center gap-3"
+              >
+                <svg
+                  class="w-5 h-5 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+                <div>
+                  <div class="font-semibold text-gray-800">Add Expense</div>
+                  <div class="text-xs text-gray-500">Record a payment</div>
+                </div>
+              </button>
+
+              <button
+                @click="openIncomeModal"
+                class="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors duration-150 flex items-center gap-3"
+              >
+                <svg
+                  class="w-5 h-5 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div>
+                  <div class="font-semibold text-gray-800">Add Income</div>
+                  <div class="text-xs text-gray-500">Record earnings</div>
+                </div>
+              </button>
+            </div>
+          </div>
+          <!-- /addMenuRef -->
+          <!-- /dropdown -->
+
+          <!-- User avatar + sign-out -->
+          <div class="flex items-center gap-2">
+            <img
+              v-if="user?.photoURL"
+              :src="user.photoURL"
+              :alt="user.displayName ?? 'User'"
+              class="w-8 h-8 rounded-full border-2 border-white/50 object-cover"
+              :title="user.displayName ?? user.email ?? ''"
+            />
+            <div
+              v-else
+              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-semibold text-sm"
+              :title="user?.displayName ?? user?.email ?? ''"
+            >
+              {{
+                (
+                  user?.displayName?.[0] ??
+                  user?.email?.[0] ??
+                  "?"
+                ).toUpperCase()
+              }}
+            </div>
             <button
-              @click="openIncomeModal"
-              class="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors duration-150 flex items-center gap-3"
+              @click="signOut"
+              title="Sign out"
+              class="text-white/70 hover:text-white transition-colors duration-200"
             >
               <svg
-                class="w-5 h-5 text-green-500"
+                class="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -237,18 +292,17 @@ const closeIncomeModal = () => {
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
                 />
               </svg>
-              <div>
-                <div class="font-semibold text-gray-800">Add Income</div>
-                <div class="text-xs text-gray-500">Record earnings</div>
-              </div>
             </button>
           </div>
         </div>
+        <!-- /right side -->
       </div>
+      <!-- /flex h-16 -->
     </div>
+    <!-- /max-w-7xl -->
 
     <!-- Mobile menu -->
     <div class="md:hidden px-4 pb-4 space-y-1">

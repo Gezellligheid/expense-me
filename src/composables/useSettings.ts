@@ -1,4 +1,5 @@
 import { ref, watch, computed } from "vue";
+import { pushToCloud } from "../services/cloudSyncService";
 
 export interface Currency {
   code: string;
@@ -66,9 +67,24 @@ const settings = ref<AppSettings>(loadSettings());
 
 watch(
   settings,
-  (val) => localStorage.setItem("appSettings", JSON.stringify(val)),
+  (val) => {
+    const serialized = JSON.stringify(val);
+    localStorage.setItem("appSettings", serialized);
+    void pushToCloud("appSettings", serialized);
+  },
   { deep: true },
 );
+
+// When another device pushes new settings via Firestore the onSnapshot handler
+// updates localStorage and fires 'storage-updated'. Reload here so the UI
+// reflects the change without a full page refresh.
+function handleRemoteSettingsUpdate() {
+  const fresh = loadSettings();
+  if (JSON.stringify(fresh) !== JSON.stringify(settings.value)) {
+    settings.value = fresh;
+  }
+}
+window.addEventListener("storage-updated", handleRemoteSettingsUpdate);
 
 let mqCleanup: (() => void) | null = null;
 

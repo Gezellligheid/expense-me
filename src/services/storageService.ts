@@ -1,3 +1,16 @@
+import { pushToCloud, pushValueToCloud } from "./cloudSyncService";
+
+// ── Helpers: write to localStorage AND mirror to Firestore ───────────────────
+function lsSet(key: string, value: string): void {
+  localStorage.setItem(key, value);
+  void pushToCloud(key, value);
+}
+
+function lsClear(key: string, emptyValue: unknown = []): void {
+  localStorage.removeItem(key);
+  void pushValueToCloud(key, emptyValue);
+}
+
 export interface Expense {
   amount: string;
   description: string;
@@ -53,7 +66,7 @@ export const storageService = {
     combined.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
-    localStorage.setItem("expenses", JSON.stringify(combined));
+    lsSet("expenses", JSON.stringify(combined));
     this.notifyStorageUpdate();
   },
 
@@ -63,7 +76,7 @@ export const storageService = {
       (e) => e.date === expense.date && e.description === expense.description && e.amount === expense.amount,
     );
     if (idx !== -1) existing.splice(idx, 1);
-    localStorage.setItem("expenses", JSON.stringify(existing));
+    lsSet("expenses", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 
@@ -80,7 +93,7 @@ export const storageService = {
     combined.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
-    localStorage.setItem("incomes", JSON.stringify(combined));
+    lsSet("incomes", JSON.stringify(combined));
     this.notifyStorageUpdate();
   },
 
@@ -90,7 +103,7 @@ export const storageService = {
       (i) => i.date === income.date && i.description === income.description && i.amount === income.amount,
     );
     if (idx !== -1) existing.splice(idx, 1);
-    localStorage.setItem("incomes", JSON.stringify(existing));
+    lsSet("incomes", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 
@@ -113,7 +126,7 @@ export const storageService = {
   saveRecurringExpense(recurring: RecurringExpense): void {
     const existing = this.loadRecurringExpenses();
     existing.push(recurring);
-    localStorage.setItem("recurringExpenses", JSON.stringify(existing));
+    lsSet("recurringExpenses", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 
@@ -122,7 +135,7 @@ export const storageService = {
     const idx = existing.findIndex((r) => r.id === id);
     if (idx >= 0) {
       existing[idx] = { ...data, id };
-      localStorage.setItem("recurringExpenses", JSON.stringify(existing));
+      lsSet("recurringExpenses", JSON.stringify(existing));
       this.notifyStorageUpdate();
     }
   },
@@ -130,7 +143,7 @@ export const storageService = {
   deleteRecurringExpense(id: string): void {
     const existing = this.loadRecurringExpenses();
     const filtered = existing.filter((r) => r.id !== id);
-    localStorage.setItem("recurringExpenses", JSON.stringify(filtered));
+    lsSet("recurringExpenses", JSON.stringify(filtered));
     this.notifyStorageUpdate();
   },
 
@@ -143,7 +156,7 @@ export const storageService = {
   saveRecurringIncome(recurring: RecurringIncome): void {
     const existing = this.loadRecurringIncomes();
     existing.push(recurring);
-    localStorage.setItem("recurringIncomes", JSON.stringify(existing));
+    lsSet("recurringIncomes", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 
@@ -153,7 +166,7 @@ export const storageService = {
     const idx = existing.findIndex((r) => r.id === id);
     if (idx >= 0) {
       existing[idx] = { ...data, id };
-      localStorage.setItem("recurringIncomes", JSON.stringify(existing));
+      lsSet("recurringIncomes", JSON.stringify(existing));
       this.notifyStorageUpdate();
     }
   },
@@ -161,12 +174,12 @@ export const storageService = {
   deleteRecurringIncome(id: string): void {
     const existing = this.loadRecurringIncomes();
     const filtered = existing.filter((r) => r.id !== id);
-    localStorage.setItem("recurringIncomes", JSON.stringify(filtered));
+    lsSet("recurringIncomes", JSON.stringify(filtered));
     // Also remove all overrides for this income
     const overrides = this.loadRecurringIncomeOverrides().filter(
       (o) => o.recurringId !== id,
     );
-    localStorage.setItem("recurringIncomeOverrides", JSON.stringify(overrides));
+    lsSet("recurringIncomeOverrides", JSON.stringify(overrides));
     this.notifyStorageUpdate();
   },
 
@@ -190,7 +203,7 @@ export const storageService = {
     } else {
       overrides.push({ recurringId, yearMonth, amount });
     }
-    localStorage.setItem("recurringIncomeOverrides", JSON.stringify(overrides));
+    lsSet("recurringIncomeOverrides", JSON.stringify(overrides));
     this.notifyStorageUpdate();
   },
 
@@ -198,7 +211,7 @@ export const storageService = {
     const overrides = this.loadRecurringIncomeOverrides().filter(
       (o) => !(o.recurringId === recurringId && o.yearMonth === yearMonth),
     );
-    localStorage.setItem("recurringIncomeOverrides", JSON.stringify(overrides));
+    lsSet("recurringIncomeOverrides", JSON.stringify(overrides));
     this.notifyStorageUpdate();
   },
 
@@ -211,7 +224,7 @@ export const storageService = {
   setInitialBalance(amount: number): void {
     // Clear all existing data when setting initial balance
     this.clearAll();
-    localStorage.setItem("initialBalance", amount.toString());
+    lsSet("initialBalance", amount.toString());
     this.notifyStorageUpdate();
   },
 
@@ -399,34 +412,34 @@ export const storageService = {
 
   // Clear all data (useful for testing or reset)
   clearAll(): void {
-    localStorage.removeItem("expenses");
-    localStorage.removeItem("incomes");
+    lsClear("expenses", []);
+    lsClear("incomes", []);
     this.notifyStorageUpdate();
   },
 
   /** Wipe only one-off transactions (expenses + incomes). Recurring & balance kept. */
   resetTransactions(): void {
-    localStorage.removeItem("expenses");
-    localStorage.removeItem("incomes");
+    lsClear("expenses", []);
+    lsClear("incomes", []);
     this.notifyStorageUpdate();
   },
 
   /** Wipe all recurring rules and overrides. One-off transactions kept. */
   resetRecurring(): void {
-    localStorage.removeItem("recurringExpenses");
-    localStorage.removeItem("recurringIncomes");
-    localStorage.removeItem("recurringIncomeOverrides");
+    lsClear("recurringExpenses", []);
+    lsClear("recurringIncomes", []);
+    lsClear("recurringIncomeOverrides", []);
     this.notifyStorageUpdate();
   },
 
   /** Full factory reset — clears everything. */
   resetAllData(): void {
-    localStorage.removeItem("expenses");
-    localStorage.removeItem("incomes");
-    localStorage.removeItem("recurringExpenses");
-    localStorage.removeItem("recurringIncomes");
-    localStorage.removeItem("recurringIncomeOverrides");
-    localStorage.removeItem("initialBalance");
+    lsClear("expenses", []);
+    lsClear("incomes", []);
+    lsClear("recurringExpenses", []);
+    lsClear("recurringIncomes", []);
+    lsClear("recurringIncomeOverrides", []);
+    lsClear("initialBalance", null);
     this.notifyStorageUpdate();
   },
 };
