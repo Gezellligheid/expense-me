@@ -35,15 +35,15 @@ const { formatCurrency: fmt } = useSettings();
 const { isSimulating } = useSimulation();
 
 // True when simulation has introduced at least one change that affects the balance
-const balanceChanged = computed(() => {
-  if (!isSimulating.value) return false;
-  return (
-    expenses.value.some((e) => e._sim) ||
-    incomes.value.some((i) => i._sim) ||
-    storageService.loadRecurringExpenses().some((r) => r._sim) ||
-    storageService.loadRecurringIncomes().some((r) => r._sim)
-  );
-});
+// const balanceChanged = computed(() => {
+//   if (!isSimulating.value) return false;
+//   return (
+//     expenses.value.some((e) => e._sim) ||
+//     incomes.value.some((i) => i._sim) ||
+//     storageService.loadRecurringExpenses().some((r) => r._sim) ||
+//     storageService.loadRecurringIncomes().some((r) => r._sim)
+//   );
+// });
 
 // True when simulation has introduced a change that affects the budget card month
 const budgetChanged = computed(() => {
@@ -202,7 +202,9 @@ const calendarMonthsForDots = computed(() => {
   const months = new Set(availableMonths.value);
   for (let i = 0; i < 24; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    months.add(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+    );
   }
   return Array.from(months);
 });
@@ -210,7 +212,9 @@ const calendarMonthsForDots = computed(() => {
 const allExpenseDates = computed(() => {
   const dates = new Set(expenses.value.map((e) => e.date));
   calendarMonthsForDots.value.forEach((ym) =>
-    storageService.calculateRecurringExpensesForMonth(ym).forEach((e) => dates.add(e.date)),
+    storageService
+      .calculateRecurringExpensesForMonth(ym)
+      .forEach((e) => dates.add(e.date)),
   );
   return Array.from(dates);
 });
@@ -218,7 +222,9 @@ const allExpenseDates = computed(() => {
 const allIncomeDates = computed(() => {
   const dates = new Set(incomes.value.map((i) => i.date));
   calendarMonthsForDots.value.forEach((ym) =>
-    storageService.calculateRecurringIncomesForMonth(ym).forEach((inc) => dates.add(inc.date)),
+    storageService
+      .calculateRecurringIncomesForMonth(ym)
+      .forEach((inc) => dates.add(inc.date)),
   );
   return Array.from(dates);
 });
@@ -251,8 +257,12 @@ const getPreviousMonthsBalance = computed(() => {
   const allStartDates = [
     ...expenses.value.map((e) => e.date.substring(0, 7)),
     ...incomes.value.map((i) => i.date.substring(0, 7)),
-    ...storageService.loadRecurringExpenses().map((r) => r.startDate.substring(0, 7)),
-    ...storageService.loadRecurringIncomes().map((r) => r.startDate.substring(0, 7)),
+    ...storageService
+      .loadRecurringExpenses()
+      .map((r) => r.startDate.substring(0, 7)),
+    ...storageService
+      .loadRecurringIncomes()
+      .map((r) => r.startDate.substring(0, 7)),
   ];
   if (allStartDates.length === 0) return cumulativeBalance;
 
@@ -282,10 +292,15 @@ const getPreviousMonthsBalance = computed(() => {
       .calculateRecurringIncomesForMonth(ym)
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
 
-    cumulativeBalance += (regularIncome + recurringIncome) - (regularExpenses + recurringExpenses);
+    cumulativeBalance +=
+      regularIncome + recurringIncome - (regularExpenses + recurringExpenses);
 
-    if (month === 12) { month = 1; year++; }
-    else { month++; }
+    if (month === 12) {
+      month = 1;
+      year++;
+    } else {
+      month++;
+    }
   }
 
   return cumulativeBalance;
@@ -321,8 +336,18 @@ const budgetCardYM = computed(() => {
 });
 
 const MONTH_NAMES_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 const budgetCardLabel = computed(() => {
@@ -353,7 +378,9 @@ const thisMonthExpenses = computed(() => {
   return regular + recurring;
 });
 
-const thisMonthLeft = computed(() => thisMonthIncome.value - thisMonthExpenses.value);
+const thisMonthLeft = computed(
+  () => thisMonthIncome.value - thisMonthExpenses.value,
+);
 const thisMonthSpendPct = computed(() =>
   thisMonthIncome.value > 0
     ? Math.min(100, (thisMonthExpenses.value / thisMonthIncome.value) * 100)
@@ -395,10 +422,7 @@ const selectedRangeLabel = computed(() => {
   if (!rangeStart.value || !rangeEnd.value) return "";
   const s = new Date(rangeStart.value + "T00:00:00");
   const e = new Date(rangeEnd.value + "T00:00:00");
-  if (
-    s.getFullYear() === e.getFullYear() &&
-    s.getMonth() === e.getMonth()
-  ) {
+  if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
     return s.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }
   return `${s.toLocaleDateString("en-US", { month: "short", year: "numeric" })} – ${e.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
@@ -419,7 +443,7 @@ const manualIncomes = computed(() =>
     .sort((a, b) => b.date.localeCompare(a.date)),
 );
 
-const historyTab = ref<'expenses' | 'incomes'>('expenses');
+const historyTab = ref<"expenses" | "incomes">("expenses");
 
 const removeExpense = (exp: Expense) => {
   storageService.deleteExpense(exp);
@@ -556,7 +580,7 @@ const barChartData = computed(() => ({
   labels: ["Income", "Expenses"],
   datasets: [
     {
-    label: selectedRangeLabel.value,
+      label: selectedRangeLabel.value,
       data: [totalIncome.value, totalExpenses.value],
       backgroundColor: ["rgba(34, 197, 94, 0.75)", "rgba(239, 68, 68, 0.75)"],
       borderColor: ["rgb(22, 163, 74)", "rgb(220, 38, 38)"],
@@ -664,7 +688,9 @@ const exportCSV = () => {
       <div class="flex flex-col gap-4">
         <!-- Row 1: title + initial balance -->
         <div class="flex items-center justify-between gap-3 flex-wrap">
-          <h2 class="text-xl sm:text-2xl font-bold text-gray-800">Financial Overview</h2>
+          <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
+            Financial Overview
+          </h2>
           <button
             @click="openInitialBalanceModal"
             class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
@@ -731,27 +757,39 @@ const exportCSV = () => {
             </button>
           </div>
           <!-- Date range section -->
-          <label class="text-sm font-medium text-gray-700 sr-only">Date range</label>
+          <label class="text-sm font-medium text-gray-700 sr-only"
+            >Date range</label
+          >
           <div class="flex flex-col gap-2 sm:ml-auto">
             <!-- Quick-select pills -->
             <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-xs font-medium text-gray-500 mr-0.5">Quick:</span>
+              <span class="text-xs font-medium text-gray-500 mr-0.5"
+                >Quick:</span
+              >
               <button
                 @click="selectThisMonth"
                 class="text-xs px-2.5 py-1 rounded-full border border-blue-300 text-blue-700 hover:bg-blue-500 hover:text-white transition-colors"
-              >This Month</button>
+              >
+                This Month
+              </button>
               <button
                 @click="selectLastMonth"
                 class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >Last Month</button>
+              >
+                Last Month
+              </button>
               <button
                 @click="selectLast3Months"
                 class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >Last 3 Months</button>
+              >
+                Last 3 Months
+              </button>
               <button
                 @click="selectThisYear"
                 class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >This Year</button>
+              >
+                This Year
+              </button>
             </div>
             <!-- Custom date range picker -->
             <div class="flex items-center gap-1">
@@ -760,8 +798,18 @@ const exportCSV = () => {
                 title="Previous month"
                 class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
               </button>
               <DateRangePicker
@@ -777,8 +825,18 @@ const exportCSV = () => {
                 title="Next month"
                 class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             </div>
@@ -897,15 +955,28 @@ const exportCSV = () => {
       >
         <div class="flex items-center justify-between mb-3">
           <div>
-            <p class="text-white/90 text-sm font-medium">{{ budgetCardLabel }}</p>
-            <p class="text-3xl font-bold mt-1">{{ fmt(Math.abs(thisMonthLeft)) }}</p>
+            <p class="text-white/90 text-sm font-medium">
+              {{ budgetCardLabel }}
+            </p>
+            <p class="text-3xl font-bold mt-1">
+              {{ fmt(Math.abs(thisMonthLeft)) }}
+            </p>
             <p class="text-white/80 text-xs mt-1">
-              {{ thisMonthLeft >= 0 ? 'under budget' : 'over budget' }}
+              {{ thisMonthLeft >= 0 ? "under budget" : "over budget" }}
             </p>
           </div>
-          <svg class="w-12 h-12 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          <svg
+            class="w-12 h-12 text-white/70"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
+            />
           </svg>
         </div>
         <!-- Spend progress bar -->
@@ -1039,54 +1110,121 @@ const exportCSV = () => {
     </div>
 
     <!-- Transaction History -->
-    <div id="history" class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6">
+    <div
+      id="history"
+      class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6"
+    >
       <div class="flex items-center justify-between mb-5">
-        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">Transaction History</h3>
-        <span class="text-xs text-gray-400 dark:text-gray-500">Manual transactions only</span>
+        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+          Transaction History
+        </h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500"
+          >Manual transactions only</span
+        >
       </div>
 
       <!-- Summary mini-cards -->
       <div class="grid grid-cols-2 gap-3 mb-5">
-        <div class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0">
-            <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+        <div
+          class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex items-center gap-3"
+        >
+          <div
+            class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0"
+          >
+            <svg
+              class="w-4 h-4 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17 13l-5 5m0 0l-5-5m5 5V6"
+              />
             </svg>
           </div>
           <div>
-            <p class="text-xs text-red-500 dark:text-red-400 font-medium">{{ manualExpenses.length }} Expenses</p>
-            <p class="text-base font-bold text-red-700 dark:text-red-300">{{ fmt(manualExpenses.reduce((s,e) => s + parseFloat(e.amount||'0'), 0)) }}</p>
+            <p class="text-xs text-red-500 dark:text-red-400 font-medium">
+              {{ manualExpenses.length }} Expenses
+            </p>
+            <p class="text-base font-bold text-red-700 dark:text-red-300">
+              {{
+                fmt(
+                  manualExpenses.reduce(
+                    (s, e) => s + parseFloat(e.amount || "0"),
+                    0,
+                  ),
+                )
+              }}
+            </p>
           </div>
         </div>
-        <div class="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0">
-            <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+        <div
+          class="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 flex items-center gap-3"
+        >
+          <div
+            class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0"
+          >
+            <svg
+              class="w-4 h-4 text-green-600 dark:text-green-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 11l5-5m0 0l5 5m-5-5v12"
+              />
             </svg>
           </div>
           <div>
-            <p class="text-xs text-green-500 dark:text-green-400 font-medium">{{ manualIncomes.length }} Incomes</p>
-            <p class="text-base font-bold text-green-700 dark:text-green-300">{{ fmt(manualIncomes.reduce((s,i) => s + parseFloat(i.amount||'0'), 0)) }}</p>
+            <p class="text-xs text-green-500 dark:text-green-400 font-medium">
+              {{ manualIncomes.length }} Incomes
+            </p>
+            <p class="text-base font-bold text-green-700 dark:text-green-300">
+              {{
+                fmt(
+                  manualIncomes.reduce(
+                    (s, i) => s + parseFloat(i.amount || "0"),
+                    0,
+                  ),
+                )
+              }}
+            </p>
           </div>
         </div>
       </div>
 
       <!-- Tabs -->
-      <div class="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit">
+      <div
+        class="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit"
+      >
         <button
           @click="historyTab = 'expenses'"
-          :class="historyTab === 'expenses'
-            ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-sm'
-            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+          :class="
+            historyTab === 'expenses'
+              ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          "
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-        >Expenses</button>
+        >
+          Expenses
+        </button>
         <button
           @click="historyTab = 'incomes'"
-          :class="historyTab === 'incomes'
-            ? 'bg-white dark:bg-gray-700 text-green-600 dark:text-green-400 shadow-sm'
-            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+          :class="
+            historyTab === 'incomes'
+              ? 'bg-white dark:bg-gray-700 text-green-600 dark:text-green-400 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          "
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-        >Incomes</button>
+        >
+          Incomes
+        </button>
       </div>
 
       <!-- Expense rows -->
@@ -1101,29 +1239,59 @@ const exportCSV = () => {
             ]"
           >
             <div class="flex items-center gap-3 min-w-0">
-              <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold">
-                {{ exp.description ? exp.description[0]!.toUpperCase() : '?' }}
+              <div
+                class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold"
+              >
+                {{ exp.description ? exp.description[0]!.toUpperCase() : "?" }}
               </div>
               <div class="min-w-0">
-                <p class="font-medium text-gray-800 dark:text-gray-100 truncate">{{ exp.description || 'Uncategorized' }}</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">{{ new Date(exp.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}</p>
+                <p
+                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                >
+                  {{ exp.description || "Uncategorized" }}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  {{
+                    new Date(exp.date + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      { weekday: "short", month: "short", day: "numeric" },
+                    )
+                  }}
+                </p>
               </div>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3">
-              <span class="font-bold text-red-600 dark:text-red-400">{{ fmt(parseFloat(exp.amount)) }}</span>
+              <span class="font-bold text-red-600 dark:text-red-400">{{
+                fmt(parseFloat(exp.amount))
+              }}</span>
               <button
                 @click="removeExpense(exp)"
                 class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
                 title="Remove"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
           </div>
         </div>
-        <p v-else class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm">No manual expenses in this range</p>
+        <p
+          v-else
+          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
+        >
+          No manual expenses in this range
+        </p>
       </div>
 
       <!-- Income rows -->
@@ -1138,29 +1306,59 @@ const exportCSV = () => {
             ]"
           >
             <div class="flex items-center gap-3 min-w-0">
-              <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold">
-                {{ inc.description ? inc.description[0]!.toUpperCase() : '?' }}
+              <div
+                class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold"
+              >
+                {{ inc.description ? inc.description[0]!.toUpperCase() : "?" }}
               </div>
               <div class="min-w-0">
-                <p class="font-medium text-gray-800 dark:text-gray-100 truncate">{{ inc.description || 'Uncategorized' }}</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">{{ new Date(inc.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}</p>
+                <p
+                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                >
+                  {{ inc.description || "Uncategorized" }}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  {{
+                    new Date(inc.date + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      { weekday: "short", month: "short", day: "numeric" },
+                    )
+                  }}
+                </p>
               </div>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3">
-              <span class="font-bold text-green-600 dark:text-green-400">{{ fmt(parseFloat(inc.amount)) }}</span>
+              <span class="font-bold text-green-600 dark:text-green-400">{{
+                fmt(parseFloat(inc.amount))
+              }}</span>
               <button
                 @click="removeIncome(inc)"
                 class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
                 title="Remove"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
           </div>
         </div>
-        <p v-else class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm">No manual income in this range</p>
+        <p
+          v-else
+          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
+        >
+          No manual income in this range
+        </p>
       </div>
     </div>
   </div>
