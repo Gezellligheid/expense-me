@@ -4,6 +4,7 @@ import ExpenseModal from "../modals/ExpenseModal.vue";
 import IncomeModal from "../modals/IncomeModal.vue";
 import { useAuth } from "../../composables/useAuth";
 import { useSidebar } from "../../composables/useSidebar";
+import { useSimulation } from "../../composables/useSimulation";
 
 const { user, signOut } = useAuth();
 const {
@@ -13,6 +14,7 @@ const {
   toggleMobile,
   closeMobile,
 } = useSidebar();
+const { isSimulating, startSimulation, rejectSimulation } = useSimulation();
 
 const showExpenseModal = ref(false);
 const showIncomeModal = ref(false);
@@ -412,6 +414,54 @@ const openIncomeModal = () => {
           Settings
         </span>
       </router-link>
+
+      <!-- Simulation divider -->
+      <div class="my-2 border-t border-gray-800/60" />
+
+      <!-- Simulation toggle -->
+      <button
+        @click="isSimulating ? rejectSimulation() : startSimulation()"
+        :class="[
+          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 overflow-hidden border-l-2',
+          isCollapsed ? 'md:justify-center' : '',
+          isSimulating
+            ? 'border-amber-500 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+            : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-800/70',
+        ]"
+        :title="
+          isSimulating ? 'Exit Simulation (discard)' : 'Start Simulation Mode'
+        "
+      >
+        <svg
+          class="w-5 h-5 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 3v10.586l-3.707 3.707A1 1 0 006 19h12a1 1 0 00.707-1.707L15 13.586V3M9 3h6M9 3H7m8 0h2"
+          />
+        </svg>
+        <span
+          :class="[
+            'text-sm font-medium whitespace-nowrap transition-all duration-200 overflow-hidden',
+            isCollapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100',
+          ]"
+        >
+          {{ isSimulating ? "Exit Simulation" : "Simulate" }}
+        </span>
+        <!-- Active indicator dot -->
+        <span
+          v-if="isSimulating"
+          :class="[
+            'ml-auto w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0',
+            isCollapsed ? 'md:hidden' : '',
+          ]"
+        />
+      </button>
     </nav>
 
     <!-- User section at the bottom -->

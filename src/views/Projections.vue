@@ -18,8 +18,12 @@ import {
   storageService,
   type Expense,
   type Income,
+  type RecurringExpense,
+  type RecurringIncome,
+  type RecurringIncomeOverride,
 } from "../services/storageService";
 import { useSettings } from "../composables/useSettings";
+import { useSimulation } from "../composables/useSimulation";
 
 ChartJS.register(
   CategoryScale,
@@ -38,6 +42,128 @@ const currentYear = new Date().getFullYear();
 const selectedYear = ref(currentYear);
 
 const { formatCurrency: fmt } = useSettings();
+const { isSimulating } = useSimulation();
+
+// ── Snapshot helpers for baseline (pre-simulation) comparison ────────────────
+const SNAPSHOT_KEY = "_simSnapshot";
+
+function readSnapshotKey<T>(key: string): T[] {
+  const raw = localStorage.getItem(SNAPSHOT_KEY);
+  if (!raw) return [];
+  const snap = JSON.parse(raw) as Record<string, string | null>;
+  const val = snap[key];
+  return val ? (JSON.parse(val) as T[]) : [];
+}
+
+/** Mirrors storageService.calculateRecurringExpensesForMonth but works on in-memory arrays. */
+function calcSnapRecurringExpTotal(
+  items: RecurringExpense[],
+  yearMonth: string,
+): number {
+  const parts = yearMonth.split("-").map(Number);
+  const year = parts[0] as number;
+  const month = parts[1] as number;
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+  let total = 0;
+  for (const rec of items) {
+    const startDate = new Date(rec.startDate);
+    const endDate = rec.endDate ? new Date(rec.endDate) : null;
+    if (startDate > monthEnd || (endDate && endDate < monthStart)) continue;
+    switch (rec.frequency) {
+      case "daily":
+        for (let day = 1; day <= monthEnd.getDate(); day++) {
+          const d = new Date(year, month - 1, day);
+          if (d >= startDate && (!endDate || d <= endDate))
+            total += parseFloat(rec.amount);
+        }
+        break;
+      case "weekly":
+        for (let day = 1; day <= monthEnd.getDate(); day++) {
+          const d = new Date(year, month - 1, day);
+          if (
+            d.getDay() === rec.dayOfWeek &&
+            d >= startDate &&
+            (!endDate || d <= endDate)
+          )
+            total += parseFloat(rec.amount);
+        }
+        break;
+      case "monthly": {
+        const targetDay = Math.min(rec.dayOfMonth || 1, monthEnd.getDate());
+        const d = new Date(year, month - 1, targetDay);
+        if (d >= startDate && (!endDate || d <= endDate))
+          total += parseFloat(rec.amount);
+        break;
+      }
+      case "yearly": {
+        if (startDate.getMonth() + 1 === month) {
+          const d = new Date(year, month - 1, startDate.getDate());
+          if (d >= startDate && (!endDate || d <= endDate))
+            total += parseFloat(rec.amount);
+        }
+        break;
+      }
+    }
+  }
+  return total;
+}
+
+/** Mirrors storageService.calculateRecurringIncomesForMonth but works on in-memory arrays. */
+function calcSnapRecurringIncTotal(
+  items: RecurringIncome[],
+  overrides: RecurringIncomeOverride[],
+  yearMonth: string,
+): number {
+  const parts = yearMonth.split("-").map(Number);
+  const year = parts[0] as number;
+  const month = parts[1] as number;
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+  let total = 0;
+  for (const rec of items) {
+    const override = overrides.find(
+      (o) => o.recurringId === rec.id && o.yearMonth === yearMonth,
+    );
+    const amt = parseFloat(override ? override.amount : rec.amount);
+    const startDate = new Date(rec.startDate);
+    const endDate = rec.endDate ? new Date(rec.endDate) : null;
+    if (startDate > monthEnd || (endDate && endDate < monthStart)) continue;
+    switch (rec.frequency) {
+      case "daily":
+        for (let day = 1; day <= monthEnd.getDate(); day++) {
+          const d = new Date(year, month - 1, day);
+          if (d >= startDate && (!endDate || d <= endDate)) total += amt;
+        }
+        break;
+      case "weekly":
+        for (let day = 1; day <= monthEnd.getDate(); day++) {
+          const d = new Date(year, month - 1, day);
+          if (
+            d.getDay() === rec.dayOfWeek &&
+            d >= startDate &&
+            (!endDate || d <= endDate)
+          )
+            total += amt;
+        }
+        break;
+      case "monthly": {
+        const targetDay = Math.min(rec.dayOfMonth || 1, monthEnd.getDate());
+        const d = new Date(year, month - 1, targetDay);
+        if (d >= startDate && (!endDate || d <= endDate)) total += amt;
+        break;
+      }
+      case "yearly": {
+        if (startDate.getMonth() + 1 === month) {
+          const d = new Date(year, month - 1, startDate.getDate());
+          if (d >= startDate && (!endDate || d <= endDate)) total += amt;
+        }
+        break;
+      }
+    }
+  }
+  return total;
+}
 
 const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
@@ -250,17 +376,22 @@ const barChartData = computed(() => ({
   ],
 }));
 
-const lineChartData = computed(() => ({
-  labels: MONTH_SHORT,
-  datasets: [
+const lineChartData = computed(() => {
+  const datasets: object[] = [
     {
       label: "Running Balance",
       data: monthlyData.value.map((m) => m.runningBalance),
-      borderColor: "rgba(99, 102, 241, 1)",
-      backgroundColor: "rgba(99, 102, 241, 0.12)",
+      borderColor: hasProjectionChanges.value
+        ? "rgba(245, 158, 11, 1)"
+        : "rgba(99, 102, 241, 1)",
+      backgroundColor: hasProjectionChanges.value
+        ? "rgba(245, 158, 11, 0.10)"
+        : "rgba(99, 102, 241, 0.12)",
       pointBackgroundColor: monthlyData.value.map((m) =>
         m.runningBalance >= 0
-          ? "rgba(99, 102, 241, 1)"
+          ? hasProjectionChanges.value
+            ? "rgba(245, 158, 11, 1)"
+            : "rgba(99, 102, 241, 1)"
           : "rgba(239, 68, 68, 1)",
       ),
       pointBorderColor: "#fff",
@@ -268,9 +399,29 @@ const lineChartData = computed(() => ({
       pointHoverRadius: 7,
       fill: true,
       tension: 0.4,
+      order: 1,
     },
-  ],
-}));
+  ];
+
+  if (hasProjectionChanges.value && baselineMonthlyData.value.length === 12) {
+    datasets.push({
+      label: "Balance (Before)",
+      data: baselineMonthlyData.value.map((m) => m.runningBalance),
+      borderColor: "rgba(148, 163, 184, 0.8)",
+      backgroundColor: "transparent",
+      pointBackgroundColor: "rgba(148, 163, 184, 0.8)",
+      pointBorderColor: "#fff",
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: false,
+      tension: 0.4,
+      borderDash: [6, 3],
+      order: 2,
+    });
+  }
+
+  return { labels: MONTH_SHORT, datasets };
+});
 
 const barOptions: ChartOptions<"bar"> = {
   responsive: true,
@@ -301,7 +452,7 @@ const lineOptions: ChartOptions<"line"> = {
     legend: { position: "top" },
     tooltip: {
       callbacks: {
-        label: (ctx) => ` Balance: ${fmt(ctx.parsed.y ?? 0)}`,
+        label: (ctx) => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y ?? 0)}`,
       },
     },
   },
@@ -318,6 +469,98 @@ const lineOptions: ChartOptions<"line"> = {
 // ── Year navigation ───────────────────────────────────────────────────────────
 const prevYear = () => selectedYear.value--;
 const nextYear = () => selectedYear.value++;
+
+// True when at least one simulated month differs from the baseline
+const hasProjectionChanges = computed(() => {
+  if (!isSimulating.value || baselineMonthlyData.value.length !== 12)
+    return false;
+  return monthlyData.value.some(
+    (m, i) =>
+      Math.abs(
+        m.runningBalance - (baselineMonthlyData.value[i]?.runningBalance ?? 0),
+      ) > 0.001,
+  );
+});
+
+// ── Baseline monthly data (snapshot before simulation started) ────────────────
+const baselineMonthlyData = computed<MonthData[]>(() => {
+  if (!isSimulating.value) return [];
+  const year = selectedYear.value;
+
+  const snapExp = readSnapshotKey<Expense>("expenses");
+  const snapInc = readSnapshotKey<Income>("incomes");
+  const snapRecExp = readSnapshotKey<RecurringExpense>("recurringExpenses");
+  const snapRecInc = readSnapshotKey<RecurringIncome>("recurringIncomes");
+  const snapOvr = readSnapshotKey<RecurringIncomeOverride>(
+    "recurringIncomeOverrides",
+  );
+  const snapInitBal = (() => {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return initialBalance.value ?? 0;
+    const snap = JSON.parse(raw) as Record<string, string | null>;
+    return snap["initialBalance"] ? parseFloat(snap["initialBalance"]) : 0;
+  })();
+
+  // Compute all months before selected year from snapshot
+  const candidates = [
+    ...snapExp.map((e) => e.date.substring(0, 7)),
+    ...snapInc.map((i) => i.date.substring(0, 7)),
+    ...snapRecExp.map((r) => r.startDate.substring(0, 7)),
+    ...snapRecInc.map((r) => r.startDate.substring(0, 7)),
+  ];
+  const startYM = `${year}-01`;
+  let running = snapInitBal;
+  if (candidates.length > 0) {
+    const earliest = candidates.sort()[0] as string;
+    let y2 = parseInt(earliest.split("-")[0] as string);
+    let m2 = parseInt(earliest.split("-")[1] as string);
+    while (true) {
+      const ym2 = `${y2}-${String(m2).padStart(2, "0")}`;
+      if (ym2 >= startYM) break;
+      const rExp = snapExp
+        .filter((e) => e.date.startsWith(ym2))
+        .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+      const rInc = snapInc
+        .filter((i) => i.date.startsWith(ym2))
+        .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+      running +=
+        rInc +
+        calcSnapRecurringIncTotal(snapRecInc, snapOvr, ym2) -
+        rExp -
+        calcSnapRecurringExpTotal(snapRecExp, ym2);
+      m2++;
+      if (m2 > 12) {
+        m2 = 1;
+        y2++;
+      }
+    }
+  }
+
+  return Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1;
+    const ym = `${year}-${String(m).padStart(2, "0")}`;
+    const regExp = snapExp
+      .filter((e) => e.date.startsWith(ym))
+      .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+    const regInc = snapInc
+      .filter((inc) => inc.date.startsWith(ym))
+      .reduce((s, inc) => s + parseFloat(inc.amount || "0"), 0);
+    const recExp = calcSnapRecurringExpTotal(snapRecExp, ym);
+    const recInc = calcSnapRecurringIncTotal(snapRecInc, snapOvr, ym);
+    const income = regInc + recInc;
+    const expenses = regExp + recExp;
+    const net = income - expenses;
+    running += net;
+    return {
+      month: ym,
+      label: MONTH_NAMES[i] ?? "",
+      income,
+      expenses,
+      net,
+      runningBalance: running,
+    };
+  });
+});
 </script>
 
 <template>

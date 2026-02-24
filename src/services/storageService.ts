@@ -1,26 +1,34 @@
 import { pushToCloud, pushValueToCloud } from "./cloudSyncService";
+import { simState } from "./simulationState";
 
 // ── Helpers: write to localStorage AND mirror to Firestore ───────────────────
 function lsSet(key: string, value: string): void {
   localStorage.setItem(key, value);
-  void pushToCloud(key, value);
+  // Suppress cloud push during simulation — changes are local-only until accepted
+  if (!simState.active) {
+    void pushToCloud(key, value);
+  }
 }
 
 function lsClear(key: string, emptyValue: unknown = []): void {
   localStorage.removeItem(key);
-  void pushValueToCloud(key, emptyValue);
+  if (!simState.active) {
+    void pushValueToCloud(key, emptyValue);
+  }
 }
 
 export interface Expense {
   amount: string;
   description: string;
   date: string;
+  _sim?: true;
 }
 
 export interface Income {
   amount: string;
   description: string;
   date: string;
+  _sim?: true;
 }
 
 export interface RecurringExpense {
@@ -32,6 +40,7 @@ export interface RecurringExpense {
   endDate?: string;
   dayOfMonth?: number; // For monthly (1-31)
   dayOfWeek?: number; // For weekly (0-6, Sun-Sat)
+  _sim?: true;
 }
 
 export interface RecurringIncome {
@@ -43,6 +52,7 @@ export interface RecurringIncome {
   endDate?: string;
   dayOfMonth?: number;
   dayOfWeek?: number;
+  _sim?: true;
 }
 
 /** Per-month amount override for a recurring income entry. */
@@ -50,6 +60,7 @@ export interface RecurringIncomeOverride {
   recurringId: string;
   yearMonth: string; // YYYY-MM
   amount: string;
+  _sim?: true;
 }
 
 export const storageService = {
@@ -61,7 +72,10 @@ export const storageService = {
 
   saveExpenses(newExpenses: Expense[]): void {
     const existing = this.loadExpenses();
-    const combined = [...existing, ...newExpenses];
+    const toSave = simState.active
+      ? newExpenses.map((e) => ({ ...e, _sim: true as const }))
+      : newExpenses;
+    const combined = [...existing, ...toSave];
     // Sort by date, oldest to newest
     combined.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -88,7 +102,10 @@ export const storageService = {
 
   saveIncomes(newIncomes: Income[]): void {
     const existing = this.loadIncomes();
-    const combined = [...existing, ...newIncomes];
+    const toSave = simState.active
+      ? newIncomes.map((i) => ({ ...i, _sim: true as const }))
+      : newIncomes;
+    const combined = [...existing, ...toSave];
     // Sort by date, oldest to newest
     combined.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -125,7 +142,8 @@ export const storageService = {
 
   saveRecurringExpense(recurring: RecurringExpense): void {
     const existing = this.loadRecurringExpenses();
-    existing.push(recurring);
+    const toSave = simState.active ? { ...recurring, _sim: true as const } : recurring;
+    existing.push(toSave);
     lsSet("recurringExpenses", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
@@ -155,7 +173,8 @@ export const storageService = {
 
   saveRecurringIncome(recurring: RecurringIncome): void {
     const existing = this.loadRecurringIncomes();
-    existing.push(recurring);
+    const toSave = simState.active ? { ...recurring, _sim: true as const } : recurring;
+    existing.push(toSave);
     lsSet("recurringIncomes", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },

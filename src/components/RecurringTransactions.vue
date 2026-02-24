@@ -289,7 +289,10 @@ const getFrequencyLabel = (frequency: string) => {
           <div
             v-for="expense in recurringExpenses"
             :key="expense.id"
-            class="p-4 bg-red-50 rounded-lg border border-red-100 flex justify-between items-start"
+            :class="[
+              'sim-list-item p-4 bg-red-50 rounded-lg border border-red-100 flex justify-between items-start',
+              expense._sim ? 'sim-entry' : '',
+            ]"
           >
             <div class="flex-1">
               <p class="font-semibold text-gray-800">
@@ -377,7 +380,10 @@ const getFrequencyLabel = (frequency: string) => {
           <div
             v-for="income in recurringIncomes"
             :key="income.id"
-            class="p-4 bg-green-50 rounded-lg border border-green-100 flex justify-between items-start"
+            :class="[
+              'sim-list-item p-4 bg-green-50 rounded-lg border border-green-100 flex justify-between items-start',
+              income._sim ? 'sim-entry' : '',
+            ]"
           >
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 flex-wrap">

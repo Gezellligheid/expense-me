@@ -176,3 +176,31 @@ html.dark tbody tr:hover {
 html.dark canvas {
   filter: brightness(0.92);
 }
+
+/* ── Simulation Mode ──────────────────────────────────────────────────────── */
+
+/* Full-viewport grayscale overlay using backdrop-filter.
+   Everything behind this overlay (z < 28) appears desaturated.
+   The sidebar lives at z-50 so it stays above and keeps its color. */
+.sim-grayscale-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none;
+  backdrop-filter: grayscale(1) brightness(0.88);
+  -webkit-backdrop-filter: grayscale(1) brightness(0.88);
+}
+
+/* Any element marked .sim-entry pops above the grayscale overlay in full color */
+body.sim-mode .sim-entry {
+  position: relative;
+  z-index: 29;
+  box-shadow:
+    0 0 0 2px #f59e0b,
+    0 4px 16px 0 rgba(245, 158, 11, 0.2);
+}
+
+/* Smooth transition on list items */
+body.sim-mode .sim-list-item {
+  transition: box-shadow 0.2s;
+}

@@ -7,6 +7,7 @@ import {
   type Income,
 } from "../services/storageService";
 import { useSettings } from "../composables/useSettings";
+import { useSimulation } from "../composables/useSimulation";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -31,6 +32,30 @@ ChartJS.register(
 );
 
 const { formatCurrency: fmt } = useSettings();
+const { isSimulating } = useSimulation();
+
+// True when simulation has introduced at least one change that affects the balance
+const balanceChanged = computed(() => {
+  if (!isSimulating.value) return false;
+  return (
+    expenses.value.some((e) => e._sim) ||
+    incomes.value.some((i) => i._sim) ||
+    storageService.loadRecurringExpenses().some((r) => r._sim) ||
+    storageService.loadRecurringIncomes().some((r) => r._sim)
+  );
+});
+
+// True when simulation has introduced a change that affects the budget card month
+const budgetChanged = computed(() => {
+  if (!isSimulating.value) return false;
+  const ym = budgetCardYM.value;
+  return (
+    expenses.value.some((e) => e._sim && e.date.startsWith(ym)) ||
+    incomes.value.some((i) => i._sim && i.date.startsWith(ym)) ||
+    storageService.loadRecurringExpenses().some((r) => r._sim) ||
+    storageService.loadRecurringIncomes().some((r) => r._sim)
+  );
+});
 
 const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
@@ -829,6 +854,7 @@ const exportCSV = () => {
           balance >= 0
             ? 'bg-gradient-to-br from-blue-500 to-purple-600'
             : 'bg-gradient-to-br from-orange-500 to-red-600',
+          isSimulating ? 'sim-entry' : '',
         ]"
       >
         <div class="flex items-center justify-between">
@@ -866,6 +892,7 @@ const exportCSV = () => {
           thisMonthLeft >= 0
             ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
             : 'bg-gradient-to-br from-rose-500 to-red-600',
+          budgetChanged ? 'sim-entry' : '',
         ]"
       >
         <div class="flex items-center justify-between mb-3">
@@ -1068,7 +1095,10 @@ const exportCSV = () => {
           <div
             v-for="(exp, idx) in manualExpenses"
             :key="idx"
-            class="flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl group"
+            :class="[
+              'sim-list-item flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl group',
+              exp._sim ? 'sim-entry' : '',
+            ]"
           >
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold">
@@ -1102,7 +1132,10 @@ const exportCSV = () => {
           <div
             v-for="(inc, idx) in manualIncomes"
             :key="idx"
-            class="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl group"
+            :class="[
+              'sim-list-item flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl group',
+              inc._sim ? 'sim-entry' : '',
+            ]"
           >
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold">
