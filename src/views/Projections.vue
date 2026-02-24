@@ -1181,13 +1181,29 @@ const baselineMonthlyData = computed<MonthData[]>(() => {
           v-if="aiProjectionData && (aiProjectionData.histDataMonths ?? 0) < 3"
           class="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
         >
-          <svg class="w-4 h-4 mt-0.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          <svg
+            class="w-4 h-4 mt-0.5 shrink-0 text-amber-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+            />
           </svg>
           <span>
             <strong>Low data warning</strong> — the AI forecast is based on
-            <strong>{{ aiProjectionData.histDataMonths ?? 0 }} month{{ (aiProjectionData.histDataMonths ?? 0) === 1 ? '' : 's' }}</strong>
-            of historical data. With fewer than 3 months of real transactions, estimates may be inaccurate. The more data you record, the better the forecast becomes.
+            <strong
+              >{{ aiProjectionData.histDataMonths ?? 0 }} month{{
+                (aiProjectionData.histDataMonths ?? 0) === 1 ? "" : "s"
+              }}</strong
+            >
+            of historical data. With fewer than 3 months of real transactions,
+            estimates may be inaccurate. The more data you record, the better
+            the forecast becomes.
           </span>
         </div>
       </div>
