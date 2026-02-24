@@ -7,6 +7,7 @@ import { useSettings } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
 import { useSidebar } from "./composables/useSidebar";
 import { useSimulation } from "./composables/useSimulation";
+import { Analytics } from "@vercel/analytics/nuxt";
 
 const { theme, initTheme } = useSettings();
 const { user, isLoadingAuth } = useAuth();
@@ -24,6 +25,7 @@ watch(theme, () => {
 
 <template>
   <!-- Auth loading -->
+  <Analytics />
   <div
     v-if="isLoadingAuth"
     class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"
