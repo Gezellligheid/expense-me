@@ -13,6 +13,7 @@ import {
   Legend,
   Filler,
   type ChartOptions,
+  type ChartDataset,
 } from "chart.js";
 import {
   storageService,
@@ -377,7 +378,7 @@ const barChartData = computed(() => ({
 }));
 
 const lineChartData = computed(() => {
-  const datasets: object[] = [
+  const datasets: ChartDataset<"line">[] = [
     {
       label: "Running Balance",
       data: monthlyData.value.map((m) => m.runningBalance),
