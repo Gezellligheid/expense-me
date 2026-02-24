@@ -373,6 +373,12 @@ const openIncomeModal = () => {
         >
           Projections
         </span>
+        <span
+          :class="[
+            'text-xs font-semibold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 leading-none shrink-0 transition-all duration-200',
+            isCollapsed ? 'md:hidden' : '',
+          ]"
+        >AI</span>
       </router-link>
 
       <router-link

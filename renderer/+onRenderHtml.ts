@@ -1,0 +1,36 @@
+import { escapeInject, dangerouslySkipEscape } from "vike/server";
+
+// SPA mode: returns only the HTML shell.
+// Vike injects the client-side <script> bundle automatically.
+// Vue rendering is handled entirely in the browser (+onRenderClient.ts).
+export async function onRenderHtml() {
+  return escapeInject`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expense-me</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+
+    <!-- PWA / Android -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#6366f1" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS Safari standalone -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Expense-me" />
+
+    <!-- SEO -->
+    <meta name="description" content="Track your finances across all your devices" />
+  </head>
+  <body>
+    <div id="app">${dangerouslySkipEscape("")}</div>
+  </body>
+</html>`;
+}

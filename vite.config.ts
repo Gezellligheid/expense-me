@@ -1,7 +1,10 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import vike from "vike/plugin";
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vike(), // must come before @vitejs/plugin-vue
+    vue(),
+  ],
 });

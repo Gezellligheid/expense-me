@@ -170,6 +170,244 @@ const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
 const initialBalance = ref<number | null>(null);
 
+// ── AI Projection ─────────────────────────────────────────────────────────────
+const MAX_FORECAST_YEAR = currentYear + 5;
+
+interface AIProjectionResult {
+  startMonth: string; // YYYY-MM — first month of the forecast
+  balances: number[]; // end-of-month running balances (up to 60 values)
+  histDataMonths?: number; // how many months of past data were available
+}
+
+const aiProjectionData = ref<AIProjectionResult | null>(null);
+const isLoadingAI = ref(false);
+const aiError = ref<string | null>(null);
+
+// ── Rate limiting (5 requests / 60 s) ────────────────────────────────────────
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW = 60_000;
+const AI_RATE_LS_KEY = "ai_request_times";
+
+function loadRequestTimes(): number[] {
+  try {
+    const raw = localStorage.getItem(AI_RATE_LS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as number[];
+    const now = Date.now();
+    return arr.filter((t) => now - t < RATE_LIMIT_WINDOW);
+  } catch {
+    return [];
+  }
+}
+
+const aiRequestTimes = ref<number[]>(loadRequestTimes());
+const rateLimitWaitSeconds = ref(0);
+let rateLimitInterval: ReturnType<typeof setInterval> | null = null;
+
+function pruneRequestTimes() {
+  const now = Date.now();
+  aiRequestTimes.value = aiRequestTimes.value.filter(
+    (t) => now - t < RATE_LIMIT_WINDOW,
+  );
+  try {
+    localStorage.setItem(AI_RATE_LS_KEY, JSON.stringify(aiRequestTimes.value));
+  } catch {}
+}
+
+const rateLimitRemaining = computed(
+  () => RATE_LIMIT_MAX - aiRequestTimes.value.length,
+);
+
+// ── Forecast window ───────────────────────────────────────────────────────────
+/** First month to forecast = the month after today */
+const forecastStartMonthStr = computed<string>(() => {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
+
+/** Total months from forecastStart to December of MAX_FORECAST_YEAR (max 60) */
+const forecastMonthCount = computed<number>(() => {
+  const [sy, sm] = forecastStartMonthStr.value.split("-").map(Number) as [
+    number,
+    number,
+  ];
+  return Math.min((MAX_FORECAST_YEAR - sy) * 12 + (12 - sm + 1), 60);
+});
+
+/** Running balance at the START of forecastStartMonth, computed from all data. */
+const balanceAtForecastStart = computed<number>(() => {
+  const startYM = forecastStartMonthStr.value;
+  let balance = initialBalance.value ?? 0;
+
+  const candidates: string[] = [];
+  expenses.value.forEach((e) => candidates.push(e.date.substring(0, 7)));
+  incomes.value.forEach((i) => candidates.push(i.date.substring(0, 7)));
+  storageService
+    .loadRecurringExpenses()
+    .forEach((r) => candidates.push(r.startDate.substring(0, 7)));
+  storageService
+    .loadRecurringIncomes()
+    .forEach((r) => candidates.push(r.startDate.substring(0, 7)));
+
+  if (candidates.length === 0) return balance;
+
+  const earliest = candidates.sort()[0] as string;
+  if (earliest >= startYM) return balance;
+
+  let y = parseInt(earliest.split("-")[0] as string);
+  let m = parseInt(earliest.split("-")[1] as string);
+  while (true) {
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    if (ym >= startYM) break;
+    const regularExp = expenses.value
+      .filter((e) => e.date.startsWith(ym))
+      .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+    const recurringExp = storageService
+      .calculateRecurringExpensesForMonth(ym)
+      .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+    const regularInc = incomes.value
+      .filter((i) => i.date.startsWith(ym))
+      .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+    const recurringInc = storageService
+      .calculateRecurringIncomesForMonth(ym)
+      .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+    balance += regularInc + recurringInc - (regularExp + recurringExp);
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return balance;
+});
+
+/** Slice the AI balances that correspond to `selectedYear` (some months may be null). */
+const aiForYear = computed<(number | null)[]>(() => {
+  if (!aiProjectionData.value) return Array(12).fill(null);
+  const { startMonth, balances } = aiProjectionData.value;
+  if (!startMonth || !balances?.length) return Array(12).fill(null);
+
+  const [sy, sm] = startMonth.split("-").map(Number) as [number, number];
+  const year = selectedYear.value;
+  const result: (number | null)[] = Array(12).fill(null);
+  for (let i = 0; i < balances.length; i++) {
+    // Convert forecast index → absolute month → year/month
+    const absMonth = sy * 12 + (sm - 1) + i;
+    const mYear = Math.floor(absMonth / 12);
+    const mMonth = (absMonth % 12) + 1;
+    if (mYear === year) result[mMonth - 1] = balances[i]!;
+  }
+  return result;
+});
+
+const aiForYearHasData = computed(() =>
+  aiForYear.value.some((v) => v !== null),
+);
+
+async function generateAIProjection() {
+  // Client-side rate limit guard
+  pruneRequestTimes();
+  if (aiRequestTimes.value.length >= RATE_LIMIT_MAX) {
+    const oldest = aiRequestTimes.value[0]!;
+    const wait = Math.ceil((oldest + RATE_LIMIT_WINDOW - Date.now()) / 1000);
+    aiError.value = `Rate limit reached — wait ${wait}s before trying again.`;
+    return;
+  }
+
+  isLoadingAI.value = true;
+  aiError.value = null;
+
+  try {
+    const recurringExpenses = storageService.loadRecurringExpenses();
+    const recurringIncomes = storageService.loadRecurringIncomes();
+    const body = {
+      expenses: expenses.value.map((e) => ({
+        date: e.date,
+        amount: e.amount,
+        description: e.description,
+      })),
+      incomes: incomes.value.map((i) => ({
+        date: i.date,
+        amount: i.amount,
+        description: i.description,
+      })),
+      recurringExpenses: recurringExpenses.map((r) => ({
+        amount: r.amount,
+        description: r.description,
+        frequency: r.frequency,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        dayOfMonth: r.dayOfMonth,
+        dayOfWeek: r.dayOfWeek,
+      })),
+      recurringIncomes: recurringIncomes.map((r) => ({
+        amount: r.amount,
+        description: r.description,
+        frequency: r.frequency,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        dayOfMonth: r.dayOfMonth,
+        dayOfWeek: r.dayOfWeek,
+      })),
+      initialBalance: balanceAtForecastStart.value,
+      forecastStartMonth: forecastStartMonthStr.value,
+      forecastMonths: forecastMonthCount.value,
+    };
+
+    const res = await fetch("/api/ai-projection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429) {
+      const err = (await res.json()) as { error?: string; retryAfter?: number };
+      const wait = err.retryAfter ?? 60;
+      rateLimitWaitSeconds.value = wait;
+      // Mark all slots as used so the client reflects 0 remaining
+      const now = Date.now();
+      aiRequestTimes.value = Array.from(
+        { length: RATE_LIMIT_MAX },
+        (_, i) => now - i * 100,
+      );
+      try {
+        localStorage.setItem(
+          AI_RATE_LS_KEY,
+          JSON.stringify(aiRequestTimes.value),
+        );
+      } catch {}
+      throw new Error(`Rate limit exceeded — wait ${wait}s.`);
+    }
+
+    if (!res.ok) {
+      const err = (await res.json()) as { error?: string };
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
+
+    // Record this successful request
+    aiRequestTimes.value.push(Date.now());
+    try {
+      localStorage.setItem(
+        AI_RATE_LS_KEY,
+        JSON.stringify(aiRequestTimes.value),
+      );
+    } catch {}
+
+    const raw = (await res.json()) as AIProjectionResult;
+    // Normalise legacy format: old server returned { balances: number[] } without startMonth.
+    // Fall back to forecastStartMonthStr so aiForYear can map it to the right year.
+    if (!raw.startMonth && Array.isArray(raw.balances)) {
+      raw.startMonth = forecastStartMonthStr.value;
+    }
+    aiProjectionData.value = raw;
+  } catch (err) {
+    aiError.value = err instanceof Error ? err.message : "Unknown error";
+  } finally {
+    isLoadingAI.value = false;
+  }
+}
+
 const loadData = () => {
   expenses.value = storageService.loadExpenses();
   incomes.value = storageService.loadIncomes();
@@ -179,10 +417,23 @@ const loadData = () => {
 onMounted(() => {
   loadData();
   window.addEventListener("storage-updated", loadData);
+
+  // Tick every second to keep rate-limit countdown accurate
+  rateLimitInterval = setInterval(() => {
+    pruneRequestTimes();
+    if (aiRequestTimes.value.length > 0) {
+      const oldest = aiRequestTimes.value[0]!;
+      const wait = oldest + RATE_LIMIT_WINDOW - Date.now();
+      rateLimitWaitSeconds.value = wait > 0 ? Math.ceil(wait / 1000) : 0;
+    } else {
+      rateLimitWaitSeconds.value = 0;
+    }
+  }, 1000);
 });
 
 onUnmounted(() => {
   window.removeEventListener("storage-updated", loadData);
+  if (rateLimitInterval) clearInterval(rateLimitInterval);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -421,6 +672,24 @@ const lineChartData = computed(() => {
     });
   }
 
+  if (aiForYearHasData.value) {
+    datasets.push({
+      label: "AI Realistic Forecast",
+      data: aiForYear.value as number[],
+      borderColor: "rgba(16, 185, 129, 1)",
+      backgroundColor: "rgba(16, 185, 129, 0.08)",
+      pointBackgroundColor: "rgba(16, 185, 129, 1)",
+      pointBorderColor: "#fff",
+      pointRadius: 4,
+      pointHoverRadius: 7,
+      fill: false,
+      tension: 0.4,
+      borderDash: [4, 2],
+      spanGaps: true,
+      order: 3,
+    });
+  }
+
   return { labels: MONTH_SHORT, datasets };
 });
 
@@ -587,7 +856,8 @@ const baselineMonthlyData = computed<MonthData[]>(() => {
             Financial Projections
           </h2>
           <p class="text-sm text-gray-500 mt-1">
-            12-month income &amp; expense forecast — recurring payments included
+            Multi-year income &amp; expense forecast — up to
+            {{ MAX_FORECAST_YEAR }} — recurring payments included
           </p>
         </div>
 
@@ -639,6 +909,25 @@ const baselineMonthlyData = computed<MonthData[]>(() => {
             class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium"
             >Current</span
           >
+          <span
+            v-if="selectedYear > MAX_FORECAST_YEAR"
+            class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
+          >
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+              />
+            </svg>
+            Beyond 5-year AI range
+          </span>
         </div>
       </div>
     </div>
@@ -763,26 +1052,143 @@ const baselineMonthlyData = computed<MonthData[]>(() => {
 
       <!-- Running Balance Line Chart -->
       <div class="bg-white rounded-lg shadow-md p-6">
-        <h3
-          class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"
-        >
-          <svg
-            class="w-5 h-5 text-indigo-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-            />
-          </svg>
-          Projected Running Balance
-        </h3>
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <svg
+              class="w-5 h-5 text-indigo-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+              />
+            </svg>
+            Projected Running Balance
+          </h3>
+
+          <!-- AI Forecast button -->
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+            <!-- Error display -->
+            <span
+              v-if="aiError"
+              class="text-xs text-red-500 max-w-xs truncate"
+              :title="aiError"
+              >{{ aiError }}</span
+            >
+
+            <!-- Coverage info when AI data loaded -->
+            <span
+              v-if="
+                aiProjectionData &&
+                !aiForYearHasData &&
+                selectedYear <= MAX_FORECAST_YEAR
+              "
+              class="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"
+            >
+              No AI data for {{ selectedYear }}
+            </span>
+
+            <!-- Rate limit pill -->
+            <span
+              v-if="aiProjectionData || rateLimitWaitSeconds > 0"
+              class="text-xs px-2 py-0.5 rounded-full font-medium"
+              :class="
+                rateLimitRemaining === 0
+                  ? 'bg-red-100 text-red-700'
+                  : rateLimitRemaining <= 2
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-gray-100 text-gray-500'
+              "
+            >
+              {{
+                rateLimitRemaining === 0
+                  ? `Limit — wait ${rateLimitWaitSeconds}s`
+                  : `${rateLimitRemaining}/5 left`
+              }}
+            </span>
+
+            <!-- Beyond 5-year limit message -->
+            <span
+              v-if="selectedYear > MAX_FORECAST_YEAR"
+              class="text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full"
+            >
+              AI forecast ends at {{ MAX_FORECAST_YEAR }}
+            </span>
+
+            <button
+              v-if="selectedYear <= MAX_FORECAST_YEAR"
+              @click="generateAIProjection"
+              :disabled="isLoadingAI || rateLimitRemaining === 0"
+              class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                v-if="!isLoadingAI"
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                />
+              </svg>
+              <svg
+                v-else
+                class="w-4 h-4 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+              {{
+                isLoadingAI
+                  ? "Generating…"
+                  : rateLimitWaitSeconds > 0 && rateLimitRemaining === 0
+                    ? `Wait ${rateLimitWaitSeconds}s`
+                    : aiProjectionData
+                      ? "Regenerate AI Forecast"
+                      : "Generate AI Forecast"
+              }}
+            </button>
+          </div>
+        </div>
         <div class="h-72">
           <Line :data="lineChartData" :options="lineOptions" />
+        </div>
+
+        <!-- Low-data warning -->
+        <div
+          v-if="aiProjectionData && (aiProjectionData.histDataMonths ?? 0) < 3"
+          class="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          <svg class="w-4 h-4 mt-0.5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <span>
+            <strong>Low data warning</strong> — the AI forecast is based on
+            <strong>{{ aiProjectionData.histDataMonths ?? 0 }} month{{ (aiProjectionData.histDataMonths ?? 0) === 1 ? '' : 's' }}</strong>
+            of historical data. With fewer than 3 months of real transactions, estimates may be inaccurate. The more data you record, the better the forecast becomes.
+          </span>
         </div>
       </div>
     </div>
