@@ -1,13 +1,12 @@
 /**
  * Express server
- * – Development : wraps Vite's dev server as middleware (Vike plugin included)
+ * – Development : wraps Vite's dev server as middleware
  * – Production  : serves the built SPA from dist/ and handles the API routes
  */
 import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { renderPage, createDevMiddleware } from "vike/server";
 import { GoogleGenAI } from "@google/genai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -437,27 +436,21 @@ Output ONLY the JSON array. No text, no markdown.`;
 
   // ── Static assets / Vite middleware ───────────────────────────────────────
   if (isProd) {
-    // Serve Vike's built client output
-    app.use(
-      express.static(path.join(root, "dist", "client"), { index: false }),
-    );
+    app.use(express.static(path.join(root, "dist"), { index: false }));
+    // SPA fallback
+    app.use("*", (_req, res) => {
+      res.sendFile(path.join(root, "dist", "index.html"));
+    });
   } else {
-    // Use Vike's official dev middleware (avoids the deprecated createServer warning)
-    const { devMiddleware } = await createDevMiddleware({ root });
-    app.use(devMiddleware);
+    // Vite dev server middleware
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      root,
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   }
-
-  // ── Vike page renderer (catch-all) ────────────────────────────────────────
-  app.use("*", async (req, res, next) => {
-    const pageContext = await renderPage({ urlOriginal: req.originalUrl });
-    const { httpResponse } = pageContext;
-    if (!httpResponse) return next();
-    const { body, statusCode, headers } = httpResponse;
-    (headers as [string, string][]).forEach(([name, value]) =>
-      res.setHeader(name, value),
-    );
-    res.status(statusCode).send(body);
-  });
 
   app.listen(Number(PORT), () => {
     console.log(`\n  ➜  Server : http://localhost:${PORT}\n`);
