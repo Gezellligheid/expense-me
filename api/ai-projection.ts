@@ -314,6 +314,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? `The person has ~€${baseRecurringNet.toFixed(0)}/month left after all recurring charges. Variable expenses must fit within this budget.`
         : `After recurring charges the budget is tight (net: €${baseRecurringNet.toFixed(0)}/month). Estimate conservatively.`;
 
+    const futureExpSummary =
+      futureOneTimeExpenses.length > 0
+        ? futureOneTimeExpenses
+            .map(
+              (e) =>
+                `  ${e.date} €${parseFloat(e.amount).toFixed(2)} ${e.description ?? "(no description)"}`,
+            )
+            .join("\n")
+        : "None scheduled.";
+
+    const futureIncSummary =
+      futureOneTimeIncomes.length > 0
+        ? futureOneTimeIncomes
+            .map(
+              (i) =>
+                `  ${i.date} €${parseFloat(i.amount).toFixed(2)} ${i.description ?? "(no description)"}`,
+            )
+            .join("\n")
+        : "None scheduled.";
+
     const prompt = `You are a financial assistant estimating variable day-to-day expenses for a personal budget forecast.
 
 Variable expenses = groceries, dining, clothing, fuel, personal care, recreation, and other irregular unplanned day-to-day purchases.
@@ -330,6 +350,14 @@ ${pastIncSummary}
 
 ## HISTORICAL SPENDING
 ${varExpContext}
+
+## FUTURE ONE-TIME EXPENSES
+These are already accounted for in the deterministic net — do NOT subtract them again. Use them only to understand the person's upcoming financial context and adjust variable spending behaviour if relevant (e.g. a big holiday trip may raise variable spending that month).
+${futureExpSummary}
+
+## FUTURE ONE-TIME INCOMES
+These are already accounted for in the deterministic net — do NOT add them again. Use them only for context (e.g. a large bonus may loosen variable spending slightly).
+${futureIncSummary}
 
 ## INSTRUCTIONS
 - Base your estimate on the historical data above and the available budget context.

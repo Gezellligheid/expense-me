@@ -345,6 +345,26 @@ async function createServer() {
 - Individual past transactions:\n${pastTxSummary}`
           : `No reliable history yet.\n${pastTxSummary}`;
 
+      const futureExpSummary =
+        futureOneTimeExpenses.length > 0
+          ? futureOneTimeExpenses
+              .map(
+                (e) =>
+                  `  ${e.date} €${parseFloat(e.amount).toFixed(2)} ${e.description ?? "(no description)"}`,
+              )
+              .join("\n")
+          : "None scheduled.";
+
+      const futureIncSummary =
+        futureOneTimeIncomes.length > 0
+          ? futureOneTimeIncomes
+              .map(
+                (i) =>
+                  `  ${i.date} €${parseFloat(i.amount).toFixed(2)} ${i.description ?? "(no description)"}`,
+              )
+              .join("\n")
+          : "None scheduled.";
+
       // How much is left for variable spending after all recurring charges
       const typicalSurplusAfterRecurring = baseRecurringNet;
       const varExpBudgetHint =
@@ -369,14 +389,23 @@ ${pastIncSummary}
 ## HISTORICAL SPENDING
 ${varExpContext}
 
+## FUTURE ONE-TIME EXPENSES
+These are already accounted for in the deterministic net — do NOT subtract them again. Use them only to understand the person's upcoming financial context and adjust variable spending behaviour if relevant (e.g. a big holiday trip may raise variable spending that month).
+${futureExpSummary}
+
+## FUTURE ONE-TIME INCOMES
+These are already accounted for in the deterministic net — do NOT add them again. Use them only for context (e.g. a large bonus may loosen variable spending slightly).
+${futureIncSummary}
+
 ## INSTRUCTIONS
 - Base your estimate on the historical data above and the available budget context.
 - If past data exists, use the individual transaction amounts and descriptions to calibrate the typical monthly variable spend.
 - Pay close attention to period-related keywords in descriptions (e.g. "yearly", "annually", "quarterly", "seasonal", "one-time", "bonus", "tax", "holiday", "vacation") — these signal cyclical or exceptional items; do NOT spread them evenly but spike the relevant month(s) in each cycle.
-- Apply seasonal patterns every year: Jan −10%, Feb −5%, Mar–May baseline, Jun–Aug +12–18%, Sep–Oct baseline, Nov +10%, Dec +40%
 - Add natural random variation (±8%) so no two months are identical — avoid a straight line.
 - For each subsequent year beyond the first, apply ~0.3%/month cumulative inflation.
 - The estimated variable expense must be realistic for this person's specific budget — not a generic baseline.
+- Base yourselves on holidays (eg. christmas, valentines, etc...) and seasonal patterns inferred from the historical data. For example, if the person spends more in December historically, December should be higher in the forecast too, even after accounting for the general +40% seasonality.
+- IMPORTANT!!!!!: Look at bonusses in the past and in the future, if the description of them contains a periodic word (e.g. "yearly", "quarterly", "seasonal") then they should not be treated as a one-time event but rather as a recurring spike in the relevant month(s) of each year.
 
 Return a JSON array of EXACTLY ${clampedMonths} numbers.
 Each number = estimated variable expense for that month (positive euros).
