@@ -30,6 +30,11 @@ const routes: RouteRecordRaw[] = [
     name: "wrapped",
     component: () => import("../views/Wrapped.vue"),
   },
+  {
+    path: "/quick-add",
+    name: "quick-add",
+    component: () => import("../views/QuickAdd.vue"),
+  },
 ];
 
 const router = createRouter({
