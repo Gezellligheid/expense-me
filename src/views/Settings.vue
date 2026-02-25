@@ -14,7 +14,11 @@ const {
   setCurrency,
   setTheme,
   formatCurrency,
+  isTestMode,
+  setTestMode,
 } = useSettings();
+
+const isDev = import.meta.env.DEV;
 
 // ── Currency ─────────────────────────────────────────────────────────────────
 const currencySearch = ref("");
@@ -336,6 +340,89 @@ const exportAll = () => {
               formatCurrency(stats.initialBalance)
             }}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Developer: Test Mode ──────────────────────────────────────────── -->
+    <div
+      v-if="isDev"
+      class="bg-amber-50 border-2 border-amber-300 rounded-lg shadow-md p-6"
+    >
+      <h3 class="text-lg font-bold text-amber-800 mb-1 flex items-center gap-2">
+        <span class="text-xl">🧪</span>
+        Developer — Test Mode
+        <span
+          class="ml-2 text-xs font-normal bg-amber-200 text-amber-700 px-2 py-0.5 rounded-full"
+          >DEV ONLY</span
+        >
+      </h3>
+      <p class="text-sm text-amber-700 mb-4">
+        When enabled, the app displays synthetic test data (1&nbsp;year history
+        + 3&nbsp;months future).
+        <strong>No real data is read, nothing is saved to the cloud.</strong>
+      </p>
+
+      <!-- Toggle -->
+      <div
+        class="flex items-center justify-between bg-white border border-amber-200 rounded-xl px-4 py-3"
+      >
+        <div>
+          <p class="font-semibold text-gray-800 text-sm">Enable Test Mode</p>
+          <p class="text-xs text-gray-500 mt-0.5">
+            {{
+              isTestMode
+                ? "Active — showing synthetic data"
+                : "Inactive — showing real data"
+            }}
+          </p>
+        </div>
+        <button
+          @click="setTestMode(!isTestMode)"
+          class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none"
+          :class="isTestMode ? 'bg-amber-500' : 'bg-gray-300'"
+          :aria-checked="isTestMode"
+          role="switch"
+        >
+          <span
+            class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+            :class="isTestMode ? 'translate-x-6' : 'translate-x-1'"
+          />
+        </button>
+      </div>
+
+      <!-- What's included -->
+      <div
+        v-if="isTestMode"
+        class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs"
+      >
+        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
+          <p class="text-amber-700 font-semibold">Recurring Expenses</p>
+          <p class="text-gray-600 mt-0.5">
+            Rent, Netflix, Phone, Gym, Internet, Spotify, Cloud
+          </p>
+        </div>
+        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
+          <p class="text-amber-700 font-semibold">Recurring Income</p>
+          <p class="text-gray-600 mt-0.5">Monthly Salary, Freelance Work</p>
+        </div>
+        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
+          <p class="text-amber-700 font-semibold">Transactions</p>
+          <p class="text-gray-600 mt-0.5">
+            13 months history + 3 months future
+          </p>
+        </div>
+        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
+          <p class="text-amber-700 font-semibold">Initial Balance</p>
+          <p class="text-gray-600 mt-0.5">€5,000.00</p>
+        </div>
+        <div
+          class="bg-white border border-amber-200 rounded-lg px-3 py-2 col-span-2"
+        >
+          <p class="text-amber-700 font-semibold">Cloud Sync</p>
+          <p class="text-gray-600 mt-0.5">
+            Disabled — test data is never stored or uploaded
+          </p>
         </div>
       </div>
     </div>

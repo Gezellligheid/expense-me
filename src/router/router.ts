@@ -25,6 +25,11 @@ const routes: RouteRecordRaw[] = [
     name: "settings",
     component: () => import("../views/Settings.vue"),
   },
+  {
+    path: "/wrapped",
+    name: "wrapped",
+    component: () => import("../views/Wrapped.vue"),
+  },
 ];
 
 const router = createRouter({

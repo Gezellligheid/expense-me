@@ -463,6 +463,115 @@ Output ONLY the JSON array. No text, no markdown.`;
     }
   });
 
+  // ── DEV-ONLY: mock AI projection (no real data, no Groq call) ────────────
+  if (!isProd) {
+    app.post("/api/ai-projection-test", (req, res) => {
+      try {
+        const {
+          recurringExpenses = [],
+          recurringIncomes = [],
+          initialBalance = 0,
+          forecastStartMonth,
+          forecastMonths = 60,
+        } = req.body as {
+          recurringExpenses: {
+            amount: string;
+            description: string;
+            frequency: string;
+            startDate: string;
+            endDate?: string;
+          }[];
+          recurringIncomes: {
+            amount: string;
+            description: string;
+            frequency: string;
+            startDate: string;
+            endDate?: string;
+          }[];
+          initialBalance: number;
+          forecastStartMonth: string;
+          forecastMonths: number;
+        };
+
+        const clampedMonths = Math.min(Math.max(forecastMonths || 60, 1), 60);
+
+        // Build forecast month labels
+        const forecastMonthLabels: string[] = [];
+        {
+          const [fsy, fsm] = (forecastStartMonth ?? "2026-01")
+            .split("-")
+            .map(Number) as [number, number];
+          let y = fsy, m = fsm;
+          for (let i = 0; i < clampedMonths; i++) {
+            forecastMonthLabels.push(`${y}-${String(m).padStart(2, "0")}`);
+            if (++m > 12) { m = 1; y++; }
+          }
+        }
+
+        const DAYS_PER_MONTH = 30.4375;
+        const WEEKS_PER_MONTH = DAYS_PER_MONTH / 7;
+
+        function mockMonthlyEquivalent(amount: string, frequency: string): number {
+          const amt = parseFloat(amount) || 0;
+          switch (frequency) {
+            case "daily":   return amt * DAYS_PER_MONTH;
+            case "weekly":  return amt * WEEKS_PER_MONTH;
+            case "monthly": return amt;
+            case "yearly":  return amt / 12;
+            default:        return amt;
+          }
+        }
+
+        type MockRecurring = { amount: string; frequency: string; startDate: string; endDate?: string };
+
+        function mockMonthlyTotal(items: MockRecurring[]): number {
+          return items.reduce((s, r) => s + mockMonthlyEquivalent(r.amount, r.frequency), 0);
+        }
+
+        function isActiveInMonth(from: string, to: string | undefined, ym: string): boolean {
+          if ((from ?? "").slice(0, 7) > ym) return false;
+          if (!to || to === "ongoing") return true;
+          return to.slice(0, 7) >= ym;
+        }
+
+        const totalRecurringInc = mockMonthlyTotal(recurringIncomes as MockRecurring[]);
+
+        const deterministicNets = forecastMonthLabels.map((ym) => {
+          const recInc = (recurringIncomes as MockRecurring[])
+            .filter((r) => isActiveInMonth(r.startDate, r.endDate, ym))
+            .reduce((s, r) => s + mockMonthlyEquivalent(r.amount, r.frequency), 0);
+          const recExp = (recurringExpenses as MockRecurring[])
+            .filter((r) => isActiveInMonth(r.startDate, r.endDate, ym))
+            .reduce((s, r) => s + mockMonthlyEquivalent(r.amount, r.frequency), 0);
+          return recInc - recExp;
+        });
+
+        const SEASONAL = [0.9, 0.95, 1.0, 1.0, 1.0, 1.12, 1.18, 1.18, 1.0, 1.0, 1.1, 1.45];
+        const varExpBase = Math.max(200, Math.min(500, totalRecurringInc * 0.15));
+
+        // Fully deterministic — no randomness, no external calls, no stored data
+        const balances: number[] = [];
+        let bal = initialBalance;
+        for (let i = 0; i < clampedMonths; i++) {
+          const ym = forecastMonthLabels[i]!;
+          const monthIdx = parseInt(ym.slice(5, 7), 10) - 1;
+          const inflation = Math.pow(1.003, i);
+          const seasonal = SEASONAL[monthIdx] ?? 1.0;
+          const noise = 1 + (((i * 7 + 3) % 17) - 8) / 80;
+          const varExp = +(varExpBase * seasonal * inflation * noise).toFixed(2);
+          bal += deterministicNets[i]! - varExp;
+          balances.push(+bal.toFixed(2));
+        }
+
+        console.log("[DEV TEST MODE] /api/ai-projection-test — no real data used, no Groq call made");
+        res.json({ startMonth: forecastStartMonth, balances, histDataMonths: 0, testMode: true });
+      } catch (err) {
+        console.error("Test projection error:", err);
+        res.status(500).json({ error: "Test projection failed" });
+      }
+    });
+  }
+
   // ── Static assets / Vite middleware ───────────────────────────────────────
   if (isProd) {
     app.use(express.static(path.join(root, "dist"), { index: false }));

@@ -6,6 +6,7 @@ import {
   type Expense,
   type Income,
 } from "../services/storageService";
+import { testDataService } from "../services/testDataService";
 import { useSettings } from "../composables/useSettings";
 import { useSimulation } from "../composables/useSimulation";
 import {
@@ -31,8 +32,13 @@ ChartJS.register(
   Title,
 );
 
-const { formatCurrency: fmt } = useSettings();
+const { formatCurrency: fmt, isTestMode } = useSettings();
 const { isSimulating } = useSimulation();
+
+// Use test data in dev test mode, real storage otherwise
+const ds = computed(() =>
+  isTestMode.value ? testDataService : storageService,
+);
 
 // True when simulation has introduced at least one change that affects the balance
 // const balanceChanged = computed(() => {
@@ -129,9 +135,9 @@ const shiftMonth = (delta: number) => {
 };
 
 const loadData = () => {
-  expenses.value = storageService.loadExpenses();
-  incomes.value = storageService.loadIncomes();
-  initialBalance.value = storageService.getInitialBalance();
+  expenses.value = ds.value.loadExpenses();
+  incomes.value = ds.value.loadIncomes();
+  initialBalance.value = ds.value.getInitialBalance() ?? null;
 };
 
 const handleStorageUpdate = () => {
@@ -176,7 +182,7 @@ const filteredExpenses = computed(() => {
   );
   const months = getMonthsInRange(rangeStart.value, rangeEnd.value);
   const recurring = months.flatMap((ym) =>
-    storageService
+    ds.value
       .calculateRecurringExpensesForMonth(ym)
       .filter((e) => e.date >= rangeStart.value && e.date <= rangeEnd.value),
   );
@@ -189,7 +195,7 @@ const filteredIncomes = computed(() => {
   );
   const months = getMonthsInRange(rangeStart.value, rangeEnd.value);
   const recurring = months.flatMap((ym) =>
-    storageService
+    ds.value
       .calculateRecurringIncomesForMonth(ym)
       .filter((i) => i.date >= rangeStart.value && i.date <= rangeEnd.value),
   );
@@ -212,7 +218,7 @@ const calendarMonthsForDots = computed(() => {
 const allExpenseDates = computed(() => {
   const dates = new Set(expenses.value.map((e) => e.date));
   calendarMonthsForDots.value.forEach((ym) =>
-    storageService
+    ds.value
       .calculateRecurringExpensesForMonth(ym)
       .forEach((e) => dates.add(e.date)),
   );
@@ -222,7 +228,7 @@ const allExpenseDates = computed(() => {
 const allIncomeDates = computed(() => {
   const dates = new Set(incomes.value.map((i) => i.date));
   calendarMonthsForDots.value.forEach((ym) =>
-    storageService
+    ds.value
       .calculateRecurringIncomesForMonth(ym)
       .forEach((inc) => dates.add(inc.date)),
   );

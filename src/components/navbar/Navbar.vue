@@ -5,6 +5,7 @@ import IncomeModal from "../modals/IncomeModal.vue";
 import { useAuth } from "../../composables/useAuth";
 import { useSidebar } from "../../composables/useSidebar";
 import { useSimulation } from "../../composables/useSimulation";
+import { useWrappedStatus } from "../../composables/useWrappedStatus";
 
 const { user, signOut } = useAuth();
 const {
@@ -15,6 +16,7 @@ const {
   closeMobile,
 } = useSidebar();
 const { isSimulating, startSimulation, rejectSimulation } = useSimulation();
+const { status: wrappedStatus } = useWrappedStatus();
 
 const showExpenseModal = ref(false);
 const showIncomeModal = ref(false);
@@ -420,6 +422,50 @@ const openIncomeModal = () => {
         >
           Settings
         </span>
+      </router-link>
+
+      <!-- Wrapped link (only visible Dec 1 – Jan 31 per server clock) -->
+      <router-link
+        v-if="wrappedStatus?.available"
+        to="/wrapped"
+        @click="closeMobile"
+        :class="[
+          'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors duration-150 overflow-hidden',
+          isCollapsed ? 'md:justify-center' : '',
+        ]"
+        active-class="!bg-gradient-to-r !from-blue-500/20 !to-purple-500/20 !text-white !border-l-2 !border-blue-500"
+        class="text-gray-400 hover:text-white hover:bg-gray-800/70 border-l-2 border-transparent"
+        :title="isCollapsed ? 'Wrapped' : undefined"
+      >
+        <!-- Gift/sparkle icon -->
+        <svg
+          class="w-5 h-5 shrink-0 text-violet-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 8v13m0-13V6a4 4 0 00-4-4H6.5a2.5 2.5 0 000 5H12zm0 0V6a4 4 0 014-4h1.5a2.5 2.5 0 010 5H12zM3 14h18M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z"
+          />
+        </svg>
+        <span
+          :class="[
+            'text-sm font-medium whitespace-nowrap transition-all duration-200 overflow-hidden',
+            isCollapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100',
+          ]"
+        >
+          Wrapped
+        </span>
+        <span
+          :class="[
+            'text-xs font-semibold px-1 py-0.5 rounded bg-violet-500/20 text-violet-300 leading-none shrink-0 transition-all duration-200',
+            isCollapsed ? 'md:hidden' : '',
+          ]"
+          >{{ wrappedStatus?.year }}</span
+        >
       </router-link>
 
       <!-- Simulation divider -->

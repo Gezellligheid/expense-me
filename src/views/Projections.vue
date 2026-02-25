@@ -23,6 +23,7 @@ import {
   type RecurringIncome,
   type RecurringIncomeOverride,
 } from "../services/storageService";
+import { testDataService } from "../services/testDataService";
 import { useSettings } from "../composables/useSettings";
 import { useSimulation } from "../composables/useSimulation";
 import { track } from "@vercel/analytics";
@@ -42,8 +43,13 @@ ChartJS.register(
 const currentYear = new Date().getFullYear();
 const selectedYear = ref(currentYear);
 
-const { formatCurrency: fmt } = useSettings();
+const { formatCurrency: fmt, isTestMode } = useSettings();
 const { isSimulating } = useSimulation();
+
+// Use test data in dev test mode, real storage otherwise
+const ds = computed(() =>
+  isTestMode.value ? testDataService : storageService,
+);
 
 // ── Snapshot helpers for baseline (pre-simulation) comparison ────────────────
 const SNAPSHOT_KEY = "_simSnapshot";
@@ -263,13 +269,13 @@ const balanceAtForecastStart = computed<number>(() => {
     const regularExp = expenses.value
       .filter((e) => e.date.startsWith(ym))
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
-    const recurringExp = storageService
+    const recurringExp = ds.value
       .calculateRecurringExpensesForMonth(ym)
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
     const regularInc = incomes.value
       .filter((i) => i.date.startsWith(ym))
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
-    const recurringInc = storageService
+    const recurringInc = ds.value
       .calculateRecurringIncomesForMonth(ym)
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
     balance += regularInc + recurringInc - (regularExp + recurringExp);
@@ -320,8 +326,8 @@ async function generateAIProjection() {
   aiError.value = null;
 
   try {
-    const recurringExpenses = storageService.loadRecurringExpenses();
-    const recurringIncomes = storageService.loadRecurringIncomes();
+    const recurringExpenses = ds.value.loadRecurringExpenses();
+    const recurringIncomes = ds.value.loadRecurringIncomes();
     const body = {
       expenses: expenses.value.map((e) => ({
         date: e.date,
@@ -410,9 +416,9 @@ async function generateAIProjection() {
 }
 
 const loadData = () => {
-  expenses.value = storageService.loadExpenses();
-  incomes.value = storageService.loadIncomes();
-  initialBalance.value = storageService.getInitialBalance();
+  expenses.value = ds.value.loadExpenses();
+  incomes.value = ds.value.loadIncomes();
+  initialBalance.value = ds.value.getInitialBalance() ?? null;
 };
 
 onMounted(() => {
@@ -512,13 +518,13 @@ const startingBalance = computed<number>(() => {
     const regularExp = expenses.value
       .filter((e) => e.date.startsWith(ym))
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
-    const recurringExp = storageService
+    const recurringExp = ds.value
       .calculateRecurringExpensesForMonth(ym)
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
     const regularInc = incomes.value
       .filter((i) => i.date.startsWith(ym))
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
-    const recurringInc = storageService
+    const recurringInc = ds.value
       .calculateRecurringIncomesForMonth(ym)
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
     balance += regularInc + recurringInc - (regularExp + recurringExp);
@@ -546,14 +552,14 @@ const monthlyData = computed<MonthData[]>(() => {
     const regularExp = expenses.value
       .filter((e) => e.date.startsWith(ym))
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
-    const recurringExp = storageService
+    const recurringExp = ds.value
       .calculateRecurringExpensesForMonth(ym)
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
 
     const regularInc = incomes.value
       .filter((inc) => inc.date.startsWith(ym))
       .reduce((s, inc) => s + parseFloat(inc.amount || "0"), 0);
-    const recurringInc = storageService
+    const recurringInc = ds.value
       .calculateRecurringIncomesForMonth(ym)
       .reduce((s, inc) => s + parseFloat(inc.amount || "0"), 0);
 
@@ -589,7 +595,7 @@ const yearlyTotals = computed(() => {
 
 // ── Active recurring transactions this year ───────────────────────────────────
 const activeRecurringExpenses = computed(() =>
-  storageService.loadRecurringExpenses().filter((r) => {
+  ds.value.loadRecurringExpenses().filter((r) => {
     const start = r.startDate.substring(0, 7);
     const end = r.endDate ? r.endDate.substring(0, 7) : "9999-12";
     const yearStr = String(selectedYear.value);
@@ -598,7 +604,7 @@ const activeRecurringExpenses = computed(() =>
 );
 
 const activeRecurringIncomes = computed(() =>
-  storageService.loadRecurringIncomes().filter((r) => {
+  ds.value.loadRecurringIncomes().filter((r) => {
     const start = r.startDate.substring(0, 7);
     const end = r.endDate ? r.endDate.substring(0, 7) : "9999-12";
     const yearStr = String(selectedYear.value);

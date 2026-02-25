@@ -65,6 +65,11 @@ function loadSettings(): AppSettings {
 // ── Singleton shared reactive state ─────────────────────────────────────────
 const settings = ref<AppSettings>(loadSettings());
 
+// ── Test mode — dev only, never pushed to cloud ───────────────────────────────
+const _testMode = ref<boolean>(
+  import.meta.env.DEV ? localStorage.getItem("testMode") === "true" : false,
+);
+
 watch(
   settings,
   (val) => {
@@ -131,6 +136,16 @@ export function useSettings() {
     applyTheme(t);
   }
 
+  const isTestMode = computed(() => _testMode.value);
+
+  function setTestMode(enabled: boolean) {
+    if (!import.meta.env.DEV) return;
+    _testMode.value = enabled;
+    localStorage.setItem("testMode", String(enabled));
+    // Notify views so they reload data
+    window.dispatchEvent(new Event("storage-updated"));
+  }
+
   /** Call once on app mount to apply the persisted theme. */
   function initTheme() {
     applyTheme(settings.value.theme);
@@ -158,5 +173,7 @@ export function useSettings() {
     setTheme,
     initTheme,
     formatCurrency,
+    isTestMode,
+    setTestMode,
   };
 }
