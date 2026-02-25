@@ -6,6 +6,7 @@ import { useAuth } from "../../composables/useAuth";
 import { useSidebar } from "../../composables/useSidebar";
 import { useSimulation } from "../../composables/useSimulation";
 import { useWrappedStatus } from "../../composables/useWrappedStatus";
+import { usePWAInstall } from "../../composables/usePWAInstall";
 
 const { user, signOut } = useAuth();
 const {
@@ -17,6 +18,7 @@ const {
 } = useSidebar();
 const { isSimulating, startSimulation, rejectSimulation } = useSimulation();
 const { status: wrappedStatus } = useWrappedStatus();
+const { canInstall, install } = usePWAInstall();
 
 const showExpenseModal = ref(false);
 const showIncomeModal = ref(false);
@@ -470,6 +472,40 @@ const openIncomeModal = () => {
 
       <!-- Simulation divider -->
       <div class="my-2 border-t border-gray-800/60" />
+
+      <!-- Install App (shown only when browser fires beforeinstallprompt) -->
+      <button
+        v-if="canInstall"
+        @click="install"
+        :class="[
+          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 overflow-hidden border-l-2',
+          'border-indigo-500/50 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20',
+          isCollapsed ? 'md:justify-center' : '',
+        ]"
+        title="Install Expense-me app"
+      >
+        <svg
+          class="w-5 h-5 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"
+          />
+        </svg>
+        <span
+          :class="[
+            'text-sm font-medium whitespace-nowrap transition-all duration-200 overflow-hidden',
+            isCollapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100',
+          ]"
+        >
+          Install App
+        </span>
+      </button>
 
       <!-- Simulation toggle -->
       <button
