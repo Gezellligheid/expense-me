@@ -25,7 +25,7 @@ import {
 } from "../services/storageService";
 import { useSettings } from "../composables/useSettings";
 import { useSimulation } from "../composables/useSimulation";
-
+import { track } from "@vercel/analytics";
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -307,6 +307,7 @@ const aiForYearHasData = computed(() =>
 
 async function generateAIProjection() {
   // Client-side rate limit guard
+  track("generate_ai_projection");
   pruneRequestTimes();
   if (aiRequestTimes.value.length >= RATE_LIMIT_MAX) {
     const oldest = aiRequestTimes.value[0]!;
