@@ -10,12 +10,12 @@
     "server": "tsx server/index.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.5.0",
     "@vercel/analytics": "^1.6.1",
     "chart.js": "^4.5.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "firebase": "^12.9.0",
+    "groq-sdk": "^0.37.0",
     "vike": "^0.4.220",
     "vue": "^3.5.25",
     "vue-chartjs": "^5.3.3",

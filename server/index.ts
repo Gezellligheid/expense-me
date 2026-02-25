@@ -7,7 +7,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -42,7 +42,7 @@ async function createServer() {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
 
-  // ── Gemini AI projection endpoint ─────────────────────────────────────────
+  // ── Groq AI projection endpoint ───────────────────────────────────────────
   app.post("/api/ai-projection", async (req, res) => {
     // Rate-limit check
     const rl = checkRateLimit();
@@ -54,9 +54,9 @@ async function createServer() {
       return;
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-      res.status(500).json({ error: "GEMINI_API_KEY not configured" });
+      res.status(500).json({ error: "GROQ_API_KEY not configured" });
       return;
     }
 
@@ -261,7 +261,7 @@ async function createServer() {
 
       // ── Compute deterministic net per forecast month (server-side) ─────────
       // Recurring cash flows + one-time events are computed exactly here.
-      // Gemini is only asked for the variable (day-to-day) spending part.
+      // Groq is only asked for the variable (day-to-day) spending part.
       function isActiveInMonth(
         activeFrom: string,
         activeTo: string,
@@ -311,8 +311,8 @@ async function createServer() {
         return +(varExpBase * seasonal * inflation * noise).toFixed(2);
       }
 
-      // ── Ask Gemini only for variable expense per month ─────────────────────
-      // Build a description of past irregular transactions so Gemini knows real spending patterns
+      // ── Ask Groq only for variable expense per month ───────────────────────
+      // Build a description of past irregular transactions so Groq knows real spending patterns
       const pastTxSummary =
         pastExpenses.length > 0
           ? `Recent irregular expense transactions (past ${histDataMonths} month(s)):\n` +
@@ -383,13 +383,13 @@ Each number = estimated variable expense for that month (positive euros).
 Month index 0 = ${forecastMonthLabels[0]}, index ${clampedMonths - 1} = ${forecastMonthLabels[forecastMonthLabels.length - 1]}.
 Output ONLY the JSON array. No text, no markdown.`;
 
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
+      const client = new Groq({ apiKey });
+      const completion = await client.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
       });
 
-      const text = (response.text ?? "").trim();
+      const text = (completion.choices[0]?.message?.content ?? "").trim();
 
       // Extract the JSON array (tolerates markdown wrapping)
       const jsonMatch = text.match(/\[[\s\S]*]/);
