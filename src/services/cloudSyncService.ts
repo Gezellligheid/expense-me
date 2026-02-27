@@ -15,6 +15,7 @@ const SYNC_KEYS = [
   "recurringIncomes",
   "recurringIncomeOverrides",
   "initialBalance",
+  "balanceUpdates",
   "appSettings",
 ] as const;
 

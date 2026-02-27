@@ -13,7 +13,12 @@ const emit = defineEmits<{
 
 // ── Add mode state ────────────────────────────────────────────────────────────
 const expenses = ref<Expense[]>([
-  { amount: "", description: "", date: storageService.getTodayDate(), excludeFromBudget: false },
+  {
+    amount: "",
+    description: "",
+    date: storageService.getTodayDate(),
+    excludeFromBudget: false,
+  },
 ]);
 
 // ── Edit mode state ───────────────────────────────────────────────────────────
@@ -63,7 +68,12 @@ const removeExpense = (index: number) => {
 
 const closeModal = () => {
   expenses.value = [
-    { amount: "", description: "", date: storageService.getTodayDate(), excludeFromBudget: false },
+    {
+      amount: "",
+      description: "",
+      date: storageService.getTodayDate(),
+      excludeFromBudget: false,
+    },
   ];
   emit("close");
 };
@@ -225,70 +235,84 @@ const saveExpenses = () => {
           >
             <div class="flex-1 flex flex-col gap-3">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <!-- Amount Input -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Amount *
-                </label>
-                <div class="relative">
-                  <span
-                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"
-                    >$</span
-                  >
+                <!-- Amount Input -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Amount *
+                  </label>
+                  <div class="relative">
+                    <span
+                      class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                      >$</span
+                    >
+                    <input
+                      v-model="expense.amount"
+                      @input="handleExpenseInput(index)"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+
+                <!-- Description Input -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Description (optional)
+                  </label>
                   <input
-                    v-model="expense.amount"
-                    @input="handleExpenseInput(index)"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+                    v-model="expense.description"
+                    type="text"
+                    placeholder="e.g., Groceries, Rent..."
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <!-- Date Input -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Date
+                  </label>
+                  <input
+                    v-model="expense.date"
+                    type="date"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
                   />
                 </div>
               </div>
 
-              <!-- Description Input -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Description (optional)
-                </label>
-                <input
-                  v-model="expense.description"
-                  type="text"
-                  placeholder="e.g., Groceries, Rent..."
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
-                />
-              </div>
-
-              <!-- Date Input -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Date
-                </label>
-                <input
-                  v-model="expense.date"
-                  type="date"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
-                />
-              </div>
-              </div>
-
               <!-- Exclude from budget toggle -->
-              <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <div
+                class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"
+              >
                 <div>
-                  <p class="text-sm font-semibold text-gray-800">Exclude from monthly budget</p>
-                  <p class="text-xs text-gray-500 mt-0.5">Won't count towards this month's budget.</p>
+                  <p class="text-sm font-semibold text-gray-800">
+                    Exclude from monthly budget
+                  </p>
+                  <p class="text-xs text-gray-500 mt-0.5">
+                    Won't count towards this month's budget.
+                  </p>
                 </div>
                 <button
                   type="button"
-                  @click="expense.excludeFromBudget = !expense.excludeFromBudget"
+                  @click="
+                    expense.excludeFromBudget = !expense.excludeFromBudget
+                  "
                   class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ml-4 shrink-0"
-                  :class="expense.excludeFromBudget ? 'bg-amber-500' : 'bg-gray-300'"
+                  :class="
+                    expense.excludeFromBudget ? 'bg-amber-500' : 'bg-gray-300'
+                  "
                   :aria-checked="expense.excludeFromBudget"
                   role="switch"
                 >
                   <span
                     class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
-                    :class="expense.excludeFromBudget ? 'translate-x-6' : 'translate-x-1'"
+                    :class="
+                      expense.excludeFromBudget
+                        ? 'translate-x-6'
+                        : 'translate-x-1'
+                    "
                   />
                 </button>
               </div>

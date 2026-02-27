@@ -22,6 +22,7 @@ import {
   type RecurringExpense,
   type RecurringIncome,
   type RecurringIncomeOverride,
+  type BalanceUpdate,
 } from "../services/storageService";
 import { testDataService } from "../services/testDataService";
 import { useSettings } from "../composables/useSettings";
@@ -175,6 +176,7 @@ function calcSnapRecurringIncTotal(
 const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
 const initialBalance = ref<number | null>(null);
+const balanceUpdates = ref<BalanceUpdate[]>([]);
 
 // ── AI Projection ─────────────────────────────────────────────────────────────
 const MAX_FORECAST_YEAR = currentYear + 5;
@@ -244,9 +246,26 @@ const forecastMonthCount = computed<number>(() => {
 /** Running balance at the START of forecastStartMonth, computed from all data. */
 const balanceAtForecastStart = computed<number>(() => {
   const startYM = forecastStartMonthStr.value;
-  let balance = initialBalance.value ?? 0;
+  const startDate = startYM + "-01"; // first day of forecast month
+
+  // Find the most recent balance update strictly before the forecast start date
+  const priorUpdates = balanceUpdates.value
+    .filter((u) => u.date < startDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let balance: number;
+  let afterDate: string | null = null;
+
+  if (priorUpdates.length > 0) {
+    const latest = priorUpdates[priorUpdates.length - 1]!;
+    balance = latest.amount;
+    afterDate = latest.date;
+  } else {
+    balance = initialBalance.value ?? 0;
+  }
 
   const candidates: string[] = [];
+  if (afterDate) candidates.push(afterDate);
   expenses.value.forEach((e) => candidates.push(e.date.substring(0, 7)));
   incomes.value.forEach((i) => candidates.push(i.date.substring(0, 7)));
   storageService
@@ -267,16 +286,22 @@ const balanceAtForecastStart = computed<number>(() => {
     const ym = `${y}-${String(m).padStart(2, "0")}`;
     if (ym >= startYM) break;
     const regularExp = expenses.value
-      .filter((e) => e.date.startsWith(ym))
+      .filter(
+        (e) => e.date.startsWith(ym) && (!afterDate || e.date > afterDate),
+      )
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
     const recurringExp = ds.value
       .calculateRecurringExpensesForMonth(ym)
+      .filter((e) => !afterDate || e.date > afterDate)
       .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
     const regularInc = incomes.value
-      .filter((i) => i.date.startsWith(ym))
+      .filter(
+        (i) => i.date.startsWith(ym) && (!afterDate || i.date > afterDate),
+      )
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
     const recurringInc = ds.value
       .calculateRecurringIncomesForMonth(ym)
+      .filter((i) => !afterDate || i.date > afterDate)
       .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
     balance += regularInc + recurringInc - (regularExp + recurringExp);
     m++;
@@ -419,6 +444,7 @@ const loadData = () => {
   expenses.value = ds.value.loadExpenses();
   incomes.value = ds.value.loadIncomes();
   initialBalance.value = ds.value.getInitialBalance() ?? null;
+  balanceUpdates.value = storageService.loadBalanceUpdates();
 };
 
 onMounted(() => {

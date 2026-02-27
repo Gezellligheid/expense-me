@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import DateRangePicker from "../components/DateRangePicker.vue";
 import ExpenseModal from "../components/modals/ExpenseModal.vue";
 import {
   storageService,
   type Expense,
   type Income,
+  type BalanceUpdate,
 } from "../services/storageService";
 import { testDataService } from "../services/testDataService";
 import { useSettings } from "../composables/useSettings";
@@ -66,11 +67,269 @@ const budgetChanged = computed(() => {
 
 const expenses = ref<Expense[]>([]);
 const incomes = ref<Income[]>([]);
+const balanceUpdates = ref<BalanceUpdate[]>([]);
 const rangeStart = ref("");
 const rangeEnd = ref("");
 const showInitialBalanceModal = ref(false);
 const initialBalanceInput = ref("");
 const initialBalance = ref<number | null>(null);
+
+// ── Balance Update modal ───────────────────────────────────────────────────
+const showBalanceUpdateModal = ref(false);
+const balanceUpdateId = ref<string | null>(null); // null = new, string = edit
+const balanceUpdateDateInput = ref("");
+const balanceUpdateAmountInput = ref("");
+const balanceUpdateNoteInput = ref("");
+
+const openBalanceUpdateModal = () => {
+  balanceUpdateId.value = null;
+  balanceUpdateDateInput.value = storageService.getTodayDate();
+  balanceUpdateAmountInput.value = "";
+  balanceUpdateNoteInput.value = "";
+  showBalanceUpdateModal.value = true;
+};
+
+const openEditBalanceUpdate = (upd: BalanceUpdate) => {
+  balanceUpdateId.value = upd.id;
+  balanceUpdateDateInput.value = upd.date;
+  balanceUpdateAmountInput.value = upd.amount.toString();
+  balanceUpdateNoteInput.value = upd.note ?? "";
+  // Restore which same-day transactions were still pending when this correction was saved
+  excludedSameDayKeys.value = new Set(upd.pendingKeys ?? []);
+  showBalanceUpdateModal.value = true;
+};
+
+const closeBalanceUpdateModal = () => {
+  showBalanceUpdateModal.value = false;
+};
+
+const saveBalanceUpdate = () => {
+  const amount = parseFloat(balanceUpdateAmountInput.value);
+  if (isNaN(amount) || !balanceUpdateDateInput.value) return;
+  const data = {
+    date: balanceUpdateDateInput.value,
+    amount,
+    note: balanceUpdateNoteInput.value.trim() || undefined,
+    // Persist which same-day transactions were still pending (not yet cleared)
+    pendingKeys:
+      excludedSameDayKeys.value.size > 0
+        ? [...excludedSameDayKeys.value]
+        : undefined,
+  };
+  if (balanceUpdateId.value) {
+    storageService.updateBalanceUpdate(balanceUpdateId.value, data);
+  } else {
+    storageService.saveBalanceUpdate({ id: Date.now().toString(), ...data });
+  }
+  loadData();
+  closeBalanceUpdateModal();
+};
+
+const removeBalanceUpdate = (id: string) => {
+  storageService.deleteBalanceUpdate(id);
+  loadData();
+};
+
+/** Stable key for any transaction — used to track which same-day items are excluded. */
+function txKey(
+  type: "expense" | "income",
+  t: { date: string; description: string; amount: string },
+): string {
+  return `${type}|${t.date}|${t.description}|${t.amount}`;
+}
+
+/**
+ * All transactions (manual + recurring) that fall exactly on `balanceUpdateDateInput`.
+ * Used to let the user mark which ones have already cleared in their bank.
+ */
+const sameDayTransactions = computed(() => {
+  const date = balanceUpdateDateInput.value;
+  if (!date) return [];
+  const ym = date.substring(0, 7);
+
+  const items: {
+    key: string;
+    type: "expense" | "income";
+    description: string;
+    amount: string;
+    isRecurring: boolean;
+  }[] = [];
+
+  expenses.value
+    .filter((e) => e.date === date)
+    .forEach((e) =>
+      items.push({
+        key: txKey("expense", e),
+        type: "expense",
+        description: e.description,
+        amount: e.amount,
+        isRecurring: false,
+      }),
+    );
+
+  storageService
+    .calculateRecurringExpensesForMonth(ym)
+    .filter((e) => e.date === date)
+    .forEach((e) =>
+      items.push({
+        key: txKey("expense", e),
+        type: "expense",
+        description: e.description,
+        amount: e.amount,
+        isRecurring: true,
+      }),
+    );
+
+  incomes.value
+    .filter((i) => i.date === date)
+    .forEach((i) =>
+      items.push({
+        key: txKey("income", i),
+        type: "income",
+        description: i.description,
+        amount: i.amount,
+        isRecurring: false,
+      }),
+    );
+
+  storageService
+    .calculateRecurringIncomesForMonth(ym)
+    .filter((i) => i.date === date)
+    .forEach((i) =>
+      items.push({
+        key: txKey("income", i),
+        type: "income",
+        description: i.description,
+        amount: i.amount,
+        isRecurring: true,
+      }),
+    );
+
+  return items;
+});
+
+/**
+ * Keys of same-day transactions the user has marked as NOT yet cleared in their bank.
+ * Excluded from the calculated balance so the comparison stays accurate.
+ */
+const excludedSameDayKeys = ref<Set<string>>(new Set());
+
+// Reset exclusions whenever the user picks a new date
+watch(balanceUpdateDateInput, () => {
+  excludedSameDayKeys.value = new Set();
+});
+
+const toggleSameDayKey = (key: string) => {
+  const s = new Set(excludedSameDayKeys.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  excludedSameDayKeys.value = s;
+};
+
+/**
+ * Walks all recorded and recurring transactions up to and including `date`,
+ * respecting any prior balance checkpoints, and returns the running balance.
+ * `excludeKeys` skips specific same-day transactions (not yet cleared).
+ */
+function calcBalanceAtDate(date: string, excludeKeys?: Set<string>): number {
+  const dateYM = date.substring(0, 7);
+
+  // Anchor: most recent balance update strictly before this date
+  const priorUpdates = balanceUpdates.value
+    .filter((u) => u.date < date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let running: number;
+  let afterDate: string | null = null;
+  let correctionPendingKeys = new Set<string>();
+
+  if (priorUpdates.length > 0) {
+    const latest = priorUpdates[priorUpdates.length - 1]!;
+    running = latest.amount;
+    afterDate = latest.date;
+    // Which same-day transactions were still pending when this correction was saved
+    correctionPendingKeys = new Set(latest.pendingKeys ?? []);
+  } else {
+    running = initialBalance.value ?? 0;
+  }
+
+  const allStartDates = [
+    ...(afterDate ? [afterDate] : []),
+    ...expenses.value.map((e) => e.date.substring(0, 7)),
+    ...incomes.value.map((i) => i.date.substring(0, 7)),
+    ...storageService
+      .loadRecurringExpenses()
+      .map((r) => r.startDate.substring(0, 7)),
+    ...storageService
+      .loadRecurringIncomes()
+      .map((r) => r.startDate.substring(0, 7)),
+  ];
+  if (allStartDates.length === 0) return running;
+
+  const earliestMonth = allStartDates.sort()[0]!;
+  if (earliestMonth > dateYM) return running;
+
+  let y = parseInt(earliestMonth.split("-")[0]!);
+  let m = parseInt(earliestMonth.split("-")[1]!);
+  const [ry, rm] = dateYM.split("-").map(Number) as [number, number];
+
+  while (y < ry || (y === ry && m <= rm)) {
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    const isTargetMonth = y === ry && m === rm;
+
+    const txFilter = (d: string, key?: string): boolean => {
+      if (!d.startsWith(ym)) return false;
+      if (excludeKeys && key && excludeKeys.has(key)) return false;
+      if (isTargetMonth && d > date) return false;
+      if (!afterDate) return true;
+      if (d > afterDate) return true;
+      // Same day as correction anchor: only include transactions that were still pending
+      // (i.e. not yet cleared when the user set the correction amount)
+      return d === afterDate && key != null && correctionPendingKeys.has(key);
+    };
+
+    running +=
+      incomes.value
+        .filter((i) => txFilter(i.date, txKey("income", i)))
+        .reduce((s, i) => s + parseFloat(i.amount || "0"), 0) +
+      storageService
+        .calculateRecurringIncomesForMonth(ym)
+        .filter((i) => txFilter(i.date, txKey("income", i)))
+        .reduce((s, i) => s + parseFloat(i.amount || "0"), 0) -
+      expenses.value
+        .filter((e) => txFilter(e.date, txKey("expense", e)))
+        .reduce((s, e) => s + parseFloat(e.amount || "0"), 0) -
+      storageService
+        .calculateRecurringExpensesForMonth(ym)
+        .filter((e) => txFilter(e.date, txKey("expense", e)))
+        .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+
+  return running;
+}
+
+/** The balance the app has calculated for the chosen correction date. */
+const calculatedBalanceAtUpdateDate = computed<number | null>(() => {
+  if (!balanceUpdateDateInput.value) return null;
+  return calcBalanceAtDate(
+    balanceUpdateDateInput.value,
+    excludedSameDayKeys.value,
+  );
+});
+
+/** Difference: actual (user input) minus app-calculated. */
+const balanceAdjustment = computed<number | null>(() => {
+  const calc = calculatedBalanceAtUpdateDate.value;
+  const actual = parseFloat(balanceUpdateAmountInput.value);
+  if (calc === null || isNaN(actual)) return null;
+  return actual - calc;
+});
 
 // ── Date-range helpers ─────────────────────────────────────────────
 const getMonthsInRange = (start: string, end: string): string[] => {
@@ -139,6 +398,7 @@ const loadData = () => {
   expenses.value = ds.value.loadExpenses();
   incomes.value = ds.value.loadIncomes();
   initialBalance.value = ds.value.getInitialBalance() ?? null;
+  balanceUpdates.value = storageService.loadBalanceUpdates();
 };
 
 const handleStorageUpdate = () => {
@@ -256,12 +516,26 @@ const getPreviousMonthsBalance = computed(() => {
   if (!rangeStart.value) return 0;
 
   const rangeStartMonth = rangeStart.value.substring(0, 7);
-  let cumulativeBalance = initialBalance.value || 0;
 
-  // Build the earliest month to start from: the smallest of all one-off
-  // transaction dates AND all recurring rule startDates, so months that
-  // contain ONLY recurring transactions are never skipped.
+  // Find the most recent balance update strictly before rangeStart date
+  const priorUpdates = balanceUpdates.value
+    .filter((u) => u.date < rangeStart.value)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let cumulativeBalance: number;
+  let afterDate: string | null = null; // only count transactions strictly after this date
+
+  if (priorUpdates.length > 0) {
+    const latest = priorUpdates[priorUpdates.length - 1]!;
+    cumulativeBalance = latest.amount;
+    afterDate = latest.date;
+  } else {
+    cumulativeBalance = initialBalance.value || 0;
+  }
+
+  // Build the earliest month to start from
   const allStartDates = [
+    ...(afterDate ? [afterDate] : []),
     ...expenses.value.map((e) => e.date.substring(0, 7)),
     ...incomes.value.map((i) => i.date.substring(0, 7)),
     ...storageService
@@ -286,17 +560,25 @@ const getPreviousMonthsBalance = computed(() => {
     const ym = `${year}-${String(month).padStart(2, "0")}`;
 
     const regularExpenses = expenses.value
-      .filter((exp) => exp.date.startsWith(ym))
+      .filter(
+        (exp) =>
+          exp.date.startsWith(ym) && (!afterDate || exp.date > afterDate),
+      )
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
     const recurringExpenses = storageService
       .calculateRecurringExpensesForMonth(ym)
+      .filter((e) => !afterDate || e.date > afterDate)
       .reduce((sum, exp) => sum + parseFloat(exp.amount || "0"), 0);
 
     const regularIncome = incomes.value
-      .filter((inc) => inc.date.startsWith(ym))
+      .filter(
+        (inc) =>
+          inc.date.startsWith(ym) && (!afterDate || inc.date > afterDate),
+      )
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
     const recurringIncome = storageService
       .calculateRecurringIncomesForMonth(ym)
+      .filter((i) => !afterDate || i.date > afterDate)
       .reduce((sum, inc) => sum + parseFloat(inc.amount || "0"), 0);
 
     cumulativeBalance +=
@@ -314,8 +596,12 @@ const getPreviousMonthsBalance = computed(() => {
 });
 
 const balance = computed(() => {
-  const currentMonthBalance = totalIncome.value - totalExpenses.value;
-  return getPreviousMonthsBalance.value + currentMonthBalance;
+  if (!rangeEnd.value) return 0;
+  // Re-use the same walk function that powers the modal preview.
+  // It correctly anchors from the most-recent balance correction and
+  // then accumulates ALL transactions (manual + recurring) up to rangeEnd,
+  // so future expenses within the range are always deducted.
+  return calcBalanceAtDate(rangeEnd.value);
 });
 
 // ── Budget card ───────────────────────────────────────────────
@@ -452,7 +738,7 @@ const manualIncomes = computed(() =>
     .sort((a, b) => b.date.localeCompare(a.date)),
 );
 
-const historyTab = ref<"expenses" | "incomes">("expenses");
+const historyTab = ref<"expenses" | "incomes" | "corrections">("expenses");
 
 const removeExpense = (exp: Expense) => {
   storageService.deleteExpense(exp);
@@ -700,30 +986,32 @@ const exportCSV = () => {
     <!-- Month Selector and Initial Balance -->
     <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
       <div class="flex flex-col gap-4">
-        <!-- Row 1: title + initial balance -->
+        <!-- Row 1: title + action buttons -->
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
             Financial Overview
           </h2>
-          <button
-            @click="openInitialBalanceModal"
-            class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              @click="openInitialBalanceModal"
+              class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            {{ initialBalance !== null ? "Edit" : "Set" }} Initial Balance
-          </button>
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+              {{ initialBalance !== null ? "Edit" : "Set" }} Initial Balance
+            </button>
+          </div>
         </div>
         <!-- Row 2: exports + date range -->
         <div class="flex flex-col sm:flex-row sm:items-end gap-3">
@@ -1239,6 +1527,27 @@ const exportCSV = () => {
         >
           Incomes
         </button>
+        <button
+          @click="historyTab = 'corrections'"
+          :class="
+            historyTab === 'corrections'
+              ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          "
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5"
+        >
+          Corrections
+          <span
+            v-if="balanceUpdates.length > 0"
+            class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold"
+            :class="
+              historyTab === 'corrections'
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-gray-300 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+            "
+            >{{ balanceUpdates.length }}</span
+          >
+        </button>
       </div>
 
       <!-- Expense rows -->
@@ -1413,6 +1722,132 @@ const exportCSV = () => {
           No manual income in this range
         </p>
       </div>
+
+      <!-- Corrections tab -->
+      <div v-if="historyTab === 'corrections'">
+        <div class="flex justify-end mb-3">
+          <button
+            @click="openBalanceUpdateModal"
+            class="flex items-center gap-2 text-sm px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+            Add Correction
+          </button>
+        </div>
+
+        <div v-if="balanceUpdates.length > 0" class="space-y-2">
+          <div
+            v-for="upd in [...balanceUpdates].sort((a, b) =>
+              b.date.localeCompare(a.date),
+            )"
+            :key="upd.id"
+            class="flex items-center justify-between px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-xl group"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div
+                class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center shrink-0"
+              >
+                <svg
+                  class="w-4 h-4 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </div>
+              <div class="min-w-0">
+                <p
+                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                >
+                  {{ upd.note || "Balance correction" }}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  {{
+                    new Date(upd.date + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )
+                  }}
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0 ml-3">
+              <span
+                class="font-bold text-amber-700 dark:text-amber-400 tabular-nums"
+                >{{ fmt(upd.amount) }}</span
+              >
+              <button
+                @click="openEditBalanceUpdate(upd)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
+                title="Edit"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </button>
+              <button
+                @click="removeBalanceUpdate(upd.id)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                title="Remove"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p
+          v-else
+          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
+        >
+          No balance corrections yet
+        </p>
+      </div>
     </div>
   </div>
 
@@ -1535,6 +1970,338 @@ const exportCSV = () => {
           class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Save Balance
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Balance Update Modal -->
+  <div
+    v-if="showBalanceUpdateModal"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+    @click.self="closeBalanceUpdateModal"
+  >
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full">
+      <!-- Header -->
+      <div
+        class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex justify-between items-center rounded-t-xl"
+      >
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {{ balanceUpdateId ? "Edit Correction" : "Balance Correction" }}
+        </h2>
+        <button
+          @click="closeBalanceUpdateModal"
+          class="text-white hover:text-amber-100 transition-colors"
+        >
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="px-6 py-5 space-y-5">
+        <!-- Explainer -->
+        <div
+          class="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2.5"
+        >
+          <svg
+            class="w-4 h-4 text-blue-500 mt-0.5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <p class="text-xs text-blue-700 leading-relaxed">
+            Use this when your real bank balance differs from what this app
+            calculated — e.g. you forgot to log a transaction. Enter the
+            <strong>date and actual balance</strong> from your bank. If any
+            transactions are scheduled on that date, confirm which ones have
+            already cleared. The app will calculate the difference and apply it
+            so all future balances stay accurate.
+          </p>
+        </div>
+
+        <!-- Step 1 — Date -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            <span class="inline-flex items-center gap-1.5">
+              <span
+                class="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center"
+                >1</span
+              >
+              Date of your bank balance
+            </span>
+          </label>
+          <input
+            v-model="balanceUpdateDateInput"
+            type="date"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-sm"
+          />
+        </div>
+
+        <!-- Same-day transactions — let user mark which have cleared -->
+        <div
+          v-if="sameDayTransactions.length > 0"
+          class="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden text-sm"
+        >
+          <div
+            class="px-4 py-2.5 border-b border-amber-200 flex items-center gap-2"
+          >
+            <span
+              class="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shrink-0"
+              >2</span
+            >
+            <span class="font-semibold text-amber-800"
+              >Which transactions had already cleared?</span
+            >
+          </div>
+          <p class="px-4 pt-2 pb-1 text-xs text-amber-700">
+            Check only the ones that have <strong>already cleared</strong> in
+            your bank on this date. Unchecked items will <strong>not</strong> be
+            counted in the app's calculated balance.
+          </p>
+          <div class="divide-y divide-amber-100">
+            <label
+              v-for="item in sameDayTransactions"
+              :key="item.key"
+              class="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-amber-100/60 transition-colors"
+              :class="excludedSameDayKeys.has(item.key) ? 'opacity-50' : ''"
+            >
+              <input
+                type="checkbox"
+                :checked="!excludedSameDayKeys.has(item.key)"
+                @change="toggleSameDayKey(item.key)"
+                class="w-4 h-4 rounded accent-amber-500 shrink-0"
+              />
+              <span class="flex-1 min-w-0">
+                <span class="font-medium text-gray-800 truncate block">{{
+                  item.description || "Untitled"
+                }}</span>
+                <span class="text-xs text-gray-400">
+                  {{ item.isRecurring ? "Recurring · " : ""
+                  }}{{ item.type === "expense" ? "Expense" : "Income" }}
+                </span>
+              </span>
+              <span
+                class="font-semibold shrink-0 tabular-nums"
+                :class="
+                  item.type === 'expense' ? 'text-red-600' : 'text-green-600'
+                "
+              >
+                {{ item.type === "expense" ? "−" : "+"
+                }}{{ fmt(parseFloat(item.amount)) }}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Step 2 — Breakdown card (shown once date is chosen) -->
+        <div
+          v-if="balanceUpdateDateInput"
+          class="rounded-xl border border-gray-200 overflow-hidden text-sm"
+        >
+          <!-- App calculated row -->
+          <div
+            class="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200"
+          >
+            <span class="text-gray-500 flex items-center gap-1.5">
+              <svg
+                class="w-3.5 h-3.5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+              App calculated on
+              {{
+                new Date(
+                  balanceUpdateDateInput + "T00:00:00",
+                ).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              }}
+            </span>
+            <span class="font-semibold text-gray-700">
+              {{
+                calculatedBalanceAtUpdateDate !== null
+                  ? fmt(calculatedBalanceAtUpdateDate)
+                  : "—"
+              }}
+            </span>
+          </div>
+
+          <!-- Actual balance input row -->
+          <div
+            class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200"
+          >
+            <label class="text-gray-700 font-medium flex items-center gap-1.5">
+              <span
+                class="w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shrink-0"
+                >3</span
+              >
+              Your actual balance
+            </label>
+            <div class="relative w-36">
+              <span
+                class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"
+                >$</span
+              >
+              <input
+                v-model="balanceUpdateAmountInput"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                class="w-full pl-6 pr-2 py-1.5 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-right font-semibold text-sm"
+                @keyup.enter="saveBalanceUpdate"
+              />
+            </div>
+          </div>
+
+          <!-- Difference row -->
+          <div
+            class="flex items-center justify-between px-4 py-3"
+            :class="
+              balanceAdjustment === null
+                ? 'bg-gray-50'
+                : balanceAdjustment >= 0
+                  ? 'bg-green-50'
+                  : 'bg-red-50'
+            "
+          >
+            <span
+              class="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide"
+              :class="
+                balanceAdjustment === null
+                  ? 'text-gray-400'
+                  : balanceAdjustment >= 0
+                    ? 'text-green-700'
+                    : 'text-red-700'
+              "
+            >
+              <svg
+                class="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+              Adjustment applied
+            </span>
+            <span
+              class="font-bold text-sm"
+              :class="
+                balanceAdjustment === null
+                  ? 'text-gray-400'
+                  : balanceAdjustment >= 0
+                    ? 'text-green-700'
+                    : 'text-red-700'
+              "
+            >
+              <template v-if="balanceAdjustment !== null">
+                {{ balanceAdjustment >= 0 ? "+" : ""
+                }}{{ fmt(balanceAdjustment) }}
+              </template>
+              <template v-else>enter actual balance above</template>
+            </span>
+          </div>
+        </div>
+
+        <!-- Placeholder when no date yet -->
+        <div
+          v-else
+          class="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400"
+        >
+          Pick a date above to see your calculated balance
+        </div>
+
+        <!-- Note -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Note <span class="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            v-model="balanceUpdateNoteInput"
+            type="text"
+            placeholder="e.g. Missed a grocery run, bank fee"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-sm"
+            @keyup.enter="saveBalanceUpdate"
+          />
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div
+        class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 rounded-b-xl"
+      >
+        <button
+          @click="closeBalanceUpdateModal"
+          class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors text-sm font-medium"
+        >
+          Cancel
+        </button>
+        <button
+          @click="saveBalanceUpdate"
+          :disabled="!balanceUpdateDateInput || !balanceUpdateAmountInput"
+          class="px-5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          {{ balanceUpdateId ? "Save Changes" : "Apply Correction" }}
         </button>
       </div>
     </div>

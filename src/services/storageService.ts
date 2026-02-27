@@ -64,6 +64,20 @@ export interface RecurringIncomeOverride {
   _sim?: true;
 }
 
+/**
+ * A manual balance correction at a specific date.
+ * All balance calculations after this date start from `amount`.
+ */
+export interface BalanceUpdate {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  note?: string;
+  /** Keys of same-day transactions that were NOT yet cleared when the correction was saved.
+   *  These will still be applied to the balance after the correction anchor. */
+  pendingKeys?: string[];
+}
+
 export const storageService = {
   // Expense operations
   loadExpenses(): Expense[] {
@@ -260,6 +274,37 @@ export const storageService = {
       (o) => !(o.recurringId === recurringId && o.yearMonth === yearMonth),
     );
     lsSet("recurringIncomeOverrides", JSON.stringify(overrides));
+    this.notifyStorageUpdate();
+  },
+
+  // Balance update operations
+  loadBalanceUpdates(): BalanceUpdate[] {
+    const stored = localStorage.getItem("balanceUpdates");
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  saveBalanceUpdate(update: BalanceUpdate): void {
+    const existing = this.loadBalanceUpdates();
+    existing.push(update);
+    existing.sort((a, b) => a.date.localeCompare(b.date));
+    lsSet("balanceUpdates", JSON.stringify(existing));
+    this.notifyStorageUpdate();
+  },
+
+  updateBalanceUpdate(id: string, data: Omit<BalanceUpdate, "id">): void {
+    const existing = this.loadBalanceUpdates();
+    const idx = existing.findIndex((u) => u.id === id);
+    if (idx >= 0) {
+      existing[idx] = { ...data, id };
+      existing.sort((a, b) => a.date.localeCompare(b.date));
+      lsSet("balanceUpdates", JSON.stringify(existing));
+      this.notifyStorageUpdate();
+    }
+  },
+
+  deleteBalanceUpdate(id: string): void {
+    const existing = this.loadBalanceUpdates().filter((u) => u.id !== id);
+    lsSet("balanceUpdates", JSON.stringify(existing));
     this.notifyStorageUpdate();
   },
 
@@ -462,6 +507,7 @@ export const storageService = {
   clearAll(): void {
     lsClear("expenses", []);
     lsClear("incomes", []);
+    lsClear("balanceUpdates", []);
     this.notifyStorageUpdate();
   },
 
@@ -487,6 +533,7 @@ export const storageService = {
     lsClear("recurringExpenses", []);
     lsClear("recurringIncomes", []);
     lsClear("recurringIncomeOverrides", []);
+    lsClear("balanceUpdates", []);
     lsClear("initialBalance", null);
     this.notifyStorageUpdate();
   },
