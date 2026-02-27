@@ -1,27 +1,56 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { storageService, type Expense } from "../../services/storageService";
 
 const props = defineProps<{
   isOpen: boolean;
+  editExpense?: Expense | null;
 }>();
 
 const emit = defineEmits<{
   close: [];
 }>();
 
+// ── Add mode state ────────────────────────────────────────────────────────────
 const expenses = ref<Expense[]>([
-  { amount: "", description: "", date: storageService.getTodayDate() },
+  { amount: "", description: "", date: storageService.getTodayDate(), excludeFromBudget: false },
 ]);
+
+// ── Edit mode state ───────────────────────────────────────────────────────────
+const editForm = ref<Expense>({
+  amount: "",
+  description: "",
+  date: storageService.getTodayDate(),
+  excludeFromBudget: false,
+});
+
+// Populate edit form when editExpense prop changes
+watch(
+  () => props.editExpense,
+  (exp) => {
+    if (exp) {
+      editForm.value = {
+        amount: exp.amount,
+        description: exp.description,
+        date: exp.date,
+        excludeFromBudget: exp.excludeFromBudget ?? false,
+        _sim: exp._sim,
+      };
+    }
+  },
+  { immediate: true },
+);
+
+const isEditMode = () => !!props.editExpense;
 
 const handleExpenseInput = (index: number) => {
   const expense = expenses.value[index];
-  // If the last expense has an amount, add a new empty expense
   if (index === expenses.value.length - 1 && expense?.amount) {
     expenses.value.push({
       amount: "",
       description: "",
       date: storageService.getTodayDate(),
+      excludeFromBudget: false,
     });
   }
 };
@@ -34,15 +63,21 @@ const removeExpense = (index: number) => {
 
 const closeModal = () => {
   expenses.value = [
-    { amount: "", description: "", date: storageService.getTodayDate() },
+    { amount: "", description: "", date: storageService.getTodayDate(), excludeFromBudget: false },
   ];
   emit("close");
 };
 
 const saveExpenses = () => {
-  const validExpenses = expenses.value.filter((exp) => exp.amount);
-  if (validExpenses.length > 0) {
-    storageService.saveExpenses(validExpenses);
+  if (isEditMode()) {
+    if (editForm.value.amount) {
+      storageService.updateExpense(props.editExpense!, { ...editForm.value });
+    }
+  } else {
+    const validExpenses = expenses.value.filter((exp) => exp.amount);
+    if (validExpenses.length > 0) {
+      storageService.saveExpenses(validExpenses);
+    }
   }
   closeModal();
 };
@@ -75,7 +110,7 @@ const saveExpenses = () => {
               d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
             />
           </svg>
-          Add Expenses
+          {{ isEditMode() ? "Edit Expense" : "Add Expenses" }}
         </h2>
         <button
           @click="closeModal"
@@ -99,13 +134,97 @@ const saveExpenses = () => {
 
       <!-- Modal Body -->
       <div class="flex-1 overflow-y-auto px-6 py-4">
-        <div class="space-y-3">
+        <!-- ── Edit mode: single row ─────────────────────────────────── -->
+        <div v-if="isEditMode()" class="space-y-4">
+          <div
+            class="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg border border-red-200 bg-red-50/40"
+          >
+            <!-- Amount -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Amount *</label
+              >
+              <div class="relative">
+                <span
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  >$</span
+                >
+                <input
+                  v-model="editForm.amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+            <!-- Description -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Description (optional)</label
+              >
+              <input
+                v-model="editForm.description"
+                type="text"
+                placeholder="e.g., Groceries, Rent..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+              />
+            </div>
+            <!-- Date -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Date</label
+              >
+              <input
+                v-model="editForm.date"
+                type="date"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+              />
+            </div>
+          </div>
+
+          <!-- Exclude from budget toggle -->
+          <div
+            class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"
+          >
+            <div>
+              <p class="text-sm font-semibold text-gray-800">
+                Exclude from monthly budget
+              </p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                This expense will still be recorded but won't count towards this
+                month's budget.
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="editForm.excludeFromBudget = !editForm.excludeFromBudget"
+              class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ml-4 shrink-0"
+              :class="
+                editForm.excludeFromBudget ? 'bg-amber-500' : 'bg-gray-300'
+              "
+              :aria-checked="editForm.excludeFromBudget"
+              role="switch"
+            >
+              <span
+                class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+                :class="
+                  editForm.excludeFromBudget ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Add mode: batch rows ────────────────────────────────────── -->
+        <div v-else class="space-y-3">
           <div
             v-for="(expense, index) in expenses"
             :key="index"
             class="flex gap-3 items-start p-3 rounded-lg border border-gray-200 hover:border-red-300 transition-colors"
           >
-            <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="flex-1 flex flex-col gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <!-- Amount Input -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -151,6 +270,28 @@ const saveExpenses = () => {
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
                 />
               </div>
+              </div>
+
+              <!-- Exclude from budget toggle -->
+              <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                <div>
+                  <p class="text-sm font-semibold text-gray-800">Exclude from monthly budget</p>
+                  <p class="text-xs text-gray-500 mt-0.5">Won't count towards this month's budget.</p>
+                </div>
+                <button
+                  type="button"
+                  @click="expense.excludeFromBudget = !expense.excludeFromBudget"
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ml-4 shrink-0"
+                  :class="expense.excludeFromBudget ? 'bg-amber-500' : 'bg-gray-300'"
+                  :aria-checked="expense.excludeFromBudget"
+                  role="switch"
+                >
+                  <span
+                    class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+                    :class="expense.excludeFromBudget ? 'translate-x-6' : 'translate-x-1'"
+                  />
+                </button>
+              </div>
             </div>
 
             <!-- Remove Button -->
@@ -177,7 +318,10 @@ const saveExpenses = () => {
           </div>
         </div>
 
-        <p class="text-sm text-gray-500 mt-4 flex items-center gap-2">
+        <p
+          v-if="!isEditMode()"
+          class="text-sm text-gray-500 mt-4 flex items-center gap-2"
+        >
           <svg
             class="w-4 h-4"
             fill="none"
@@ -195,6 +339,7 @@ const saveExpenses = () => {
           amount
         </p>
       </div>
+      <!-- end Modal Body -->
 
       <!-- Modal Footer -->
       <div
@@ -208,10 +353,12 @@ const saveExpenses = () => {
         </button>
         <button
           @click="saveExpenses"
-          :disabled="!expenses.some((e) => e.amount)"
+          :disabled="
+            isEditMode() ? !editForm.amount : !expenses.some((e) => e.amount)
+          "
           class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Save Expenses
+          {{ isEditMode() ? "Save Changes" : "Save Expenses" }}
         </button>
       </div>
     </div>
@@ -227,5 +374,6 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 </style>

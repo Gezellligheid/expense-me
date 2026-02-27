@@ -21,6 +21,7 @@ export interface Expense {
   amount: string;
   description: string;
   date: string;
+  excludeFromBudget?: boolean;
   _sim?: true;
 }
 
@@ -84,10 +85,31 @@ export const storageService = {
     this.notifyStorageUpdate();
   },
 
+  updateExpense(original: Expense, updated: Expense): void {
+    const existing = this.loadExpenses();
+    const idx = existing.findIndex(
+      (e) =>
+        e.date === original.date &&
+        e.description === original.description &&
+        e.amount === original.amount,
+    );
+    if (idx !== -1) {
+      existing[idx] = { ...updated };
+      existing.sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      );
+      lsSet("expenses", JSON.stringify(existing));
+      this.notifyStorageUpdate();
+    }
+  },
+
   deleteExpense(expense: Expense): void {
     const existing = this.loadExpenses();
     const idx = existing.findIndex(
-      (e) => e.date === expense.date && e.description === expense.description && e.amount === expense.amount,
+      (e) =>
+        e.date === expense.date &&
+        e.description === expense.description &&
+        e.amount === expense.amount,
     );
     if (idx !== -1) existing.splice(idx, 1);
     lsSet("expenses", JSON.stringify(existing));
@@ -117,7 +139,10 @@ export const storageService = {
   deleteIncome(income: Income): void {
     const existing = this.loadIncomes();
     const idx = existing.findIndex(
-      (i) => i.date === income.date && i.description === income.description && i.amount === income.amount,
+      (i) =>
+        i.date === income.date &&
+        i.description === income.description &&
+        i.amount === income.amount,
     );
     if (idx !== -1) existing.splice(idx, 1);
     lsSet("incomes", JSON.stringify(existing));
@@ -142,7 +167,9 @@ export const storageService = {
 
   saveRecurringExpense(recurring: RecurringExpense): void {
     const existing = this.loadRecurringExpenses();
-    const toSave = simState.active ? { ...recurring, _sim: true as const } : recurring;
+    const toSave = simState.active
+      ? { ...recurring, _sim: true as const }
+      : recurring;
     existing.push(toSave);
     lsSet("recurringExpenses", JSON.stringify(existing));
     this.notifyStorageUpdate();
@@ -173,7 +200,9 @@ export const storageService = {
 
   saveRecurringIncome(recurring: RecurringIncome): void {
     const existing = this.loadRecurringIncomes();
-    const toSave = simState.active ? { ...recurring, _sim: true as const } : recurring;
+    const toSave = simState.active
+      ? { ...recurring, _sim: true as const }
+      : recurring;
     existing.push(toSave);
     lsSet("recurringIncomes", JSON.stringify(existing));
     this.notifyStorageUpdate();

@@ -6,6 +6,14 @@ import {
   type Theme,
 } from "../composables/useSettings";
 import { storageService } from "../services/storageService";
+import {
+  loadUserDataForViewing,
+  restoreMyData,
+  isViewingOtherUser,
+  initCloudSync,
+  migrateLocalStorage,
+} from "../services/cloudSyncService";
+import { useAuth } from "../composables/useAuth";
 
 const {
   currencyCode,
@@ -19,6 +27,56 @@ const {
 } = useSettings();
 
 const isDev = import.meta.env.DEV;
+const { user } = useAuth();
+
+// ── Dev: View other user ──────────────────────────────────────────────────────
+const myUidCopied = ref(false);
+const copyMyUid = async () => {
+  if (!user.value?.uid) return;
+  await navigator.clipboard.writeText(user.value.uid);
+  myUidCopied.value = true;
+  setTimeout(() => (myUidCopied.value = false), 2000);
+};
+const viewUserId = ref("");
+const viewUserStatus = ref<
+  "idle" | "loading" | "loaded" | "restoring" | "error"
+>("idle");
+const viewUserError = ref("");
+const viewUserLoaded = ref(0);
+const viewUserMissing = ref<string[]>([]);
+const isViewing = ref(isViewingOtherUser());
+
+const loadOtherUser = async () => {
+  const uid = viewUserId.value.trim();
+  if (!uid) return;
+  viewUserStatus.value = "loading";
+  viewUserError.value = "";
+  try {
+    const result = await loadUserDataForViewing(uid);
+    viewUserLoaded.value = result.loaded;
+    viewUserMissing.value = result.missing;
+    viewUserStatus.value = "loaded";
+    isViewing.value = true;
+    refreshStats();
+  } catch (err: unknown) {
+    viewUserStatus.value = "error";
+    viewUserError.value = err instanceof Error ? err.message : String(err);
+  }
+};
+
+const restoreOwnData = async () => {
+  viewUserStatus.value = "restoring";
+  await restoreMyData(async (uid) => {
+    await migrateLocalStorage(uid);
+    initCloudSync(uid);
+  });
+  viewUserStatus.value = "idle";
+  viewUserId.value = "";
+  viewUserLoaded.value = 0;
+  viewUserMissing.value = [];
+  isViewing.value = false;
+  refreshStats();
+};
 
 // ── Currency ─────────────────────────────────────────────────────────────────
 const currencySearch = ref("");
@@ -342,6 +400,120 @@ const exportAll = () => {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ── Developer: View Another User ─────────────────────────────────── -->
+    <div
+      v-if="isDev"
+      class="bg-purple-50 border-2 rounded-lg shadow-md p-6"
+      :class="isViewing ? 'border-purple-500' : 'border-purple-300'"
+    >
+      <h3
+        class="text-lg font-bold text-purple-800 mb-1 flex items-center gap-2"
+      >
+        <span class="text-xl">🕵️</span>
+        Developer — View Another User
+        <span
+          class="ml-2 text-xs font-normal bg-purple-200 text-purple-700 px-2 py-0.5 rounded-full"
+          >DEV ONLY</span
+        >
+        <span
+          v-if="isViewing"
+          class="ml-1 text-xs font-semibold bg-purple-600 text-white px-2 py-0.5 rounded-full animate-pulse"
+          >VIEWING OTHER USER</span
+        >
+      </h3>
+      <p class="text-sm text-purple-700 mb-4">
+        Load any user's Firestore data into the app for inspection.
+        <strong
+          >Your own data is backed up and fully restored when you exit.</strong
+        >
+        Cloud sync is paused while viewing.
+      </p>
+
+      <!-- Your UID + rules hint -->
+      <div
+        class="mb-4 bg-white border border-purple-200 rounded-xl px-4 py-3 text-sm"
+      >
+        <p class="text-purple-800 font-semibold mb-1">Your Firebase UID</p>
+        <div class="flex items-center gap-2">
+          <code
+            class="flex-1 bg-purple-50 text-purple-900 px-2 py-1 rounded text-xs font-mono break-all select-all"
+            >{{ user?.uid ?? "not signed in" }}</code
+          >
+          <button
+            @click="copyMyUid"
+            :disabled="!user?.uid"
+            class="shrink-0 px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            {{ myUidCopied ? "Copied!" : "Copy" }}
+          </button>
+        </div>
+        <p class="text-xs text-purple-600 mt-2">
+          Add this UID to the
+          <code class="bg-purple-100 px-1 rounded">firestore.rules</code>
+          allowlist, then run
+          <code class="bg-purple-100 px-1 rounded"
+            >firebase deploy --only firestore:rules</code
+          >
+          to gain read access.
+        </p>
+      </div>
+
+      <!-- Restore banner -->
+      <div
+        v-if="isViewing"
+        class="mb-4 flex items-center justify-between bg-purple-100 border border-purple-400 rounded-xl px-4 py-3"
+      >
+        <div>
+          <p class="font-semibold text-purple-900 text-sm">
+            Viewing: <span class="font-mono">{{ viewUserId || "…" }}</span>
+          </p>
+          <p class="text-xs text-purple-700 mt-0.5">
+            {{ viewUserLoaded }} keys loaded{{
+              viewUserMissing.length
+                ? `, ${viewUserMissing.length} missing (${viewUserMissing.join(", ")})`
+                : ""
+            }}
+          </p>
+        </div>
+        <button
+          @click="restoreOwnData"
+          :disabled="viewUserStatus === 'restoring'"
+          class="ml-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          {{
+            viewUserStatus === "restoring" ? "Restoring…" : "⬅ Restore My Data"
+          }}
+        </button>
+      </div>
+
+      <!-- Input row -->
+      <div class="flex gap-3" v-if="!isViewing">
+        <input
+          v-model="viewUserId"
+          type="text"
+          placeholder="Enter userId (Firebase UID)…"
+          class="flex-1 px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm bg-white"
+          @keydown.enter="loadOtherUser"
+          :disabled="viewUserStatus === 'loading'"
+        />
+        <button
+          @click="loadOtherUser"
+          :disabled="!viewUserId.trim() || viewUserStatus === 'loading'"
+          class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap"
+        >
+          {{ viewUserStatus === "loading" ? "Loading…" : "Load User" }}
+        </button>
+      </div>
+
+      <!-- Error -->
+      <p
+        v-if="viewUserStatus === 'error'"
+        class="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+      >
+        ⚠️ {{ viewUserError }}
+      </p>
     </div>
 
     <!-- ── Developer: Test Mode ──────────────────────────────────────────── -->

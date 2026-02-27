@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import DateRangePicker from "../components/DateRangePicker.vue";
+import ExpenseModal from "../components/modals/ExpenseModal.vue";
 import {
   storageService,
   type Expense,
@@ -376,7 +377,9 @@ const thisMonthIncome = computed(() => {
 
 const thisMonthExpenses = computed(() => {
   const regular = expenses.value
-    .filter((e) => e.date.startsWith(budgetCardYM.value))
+    .filter(
+      (e) => e.date.startsWith(budgetCardYM.value) && !e.excludeFromBudget,
+    )
     .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
   const recurring = storageService
     .calculateRecurringExpensesForMonth(budgetCardYM.value)
@@ -454,6 +457,11 @@ const historyTab = ref<"expenses" | "incomes">("expenses");
 const removeExpense = (exp: Expense) => {
   storageService.deleteExpense(exp);
   loadData();
+};
+
+const editingExpense = ref<Expense | null>(null);
+const openEditExpense = (exp: Expense) => {
+  editingExpense.value = exp;
 };
 
 const removeIncome = (inc: Income) => {
@@ -1267,9 +1275,48 @@ const exportCSV = () => {
               </div>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3">
+              <span
+                v-if="exp.excludeFromBudget"
+                class="hidden sm:inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium"
+                title="Excluded from budget"
+              >
+                <svg
+                  class="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                Budget
+              </span>
               <span class="font-bold text-red-600 dark:text-red-400">{{
                 fmt(parseFloat(exp.amount))
               }}</span>
+              <button
+                @click="openEditExpense(exp)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
+                title="Edit"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </button>
               <button
                 @click="removeExpense(exp)"
                 class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
@@ -1492,6 +1539,16 @@ const exportCSV = () => {
       </div>
     </div>
   </div>
+
+  <!-- Edit Expense Modal -->
+  <ExpenseModal
+    :is-open="!!editingExpense"
+    :edit-expense="editingExpense"
+    @close="
+      editingExpense = null;
+      loadData();
+    "
+  />
 </template>
 
 <style scoped>

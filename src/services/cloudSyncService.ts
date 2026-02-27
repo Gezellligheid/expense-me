@@ -150,3 +150,103 @@ export function stopCloudSync(): void {
 export function isCloudSyncActive(): boolean {
   return currentUid !== null;
 }
+
+// ── Dev-only: view another user's data ───────────────────────────────────────
+const BACKUP_PREFIX = "__devbackup__";
+let backupUid: string | null = null;
+
+/**
+ * DEV ONLY — Load a target user's Firestore data into localStorage so the
+ * full app renders with their data.
+ *
+ * Your own data is first snapshotted to sessionStorage.
+ * Cloud sync is paused so no live listener overwrites the viewed data.
+ *
+ * Returns an object describing how many keys were found.
+ */
+export async function loadUserDataForViewing(
+  targetUid: string,
+): Promise<{ loaded: number; missing: string[] }> {
+  // 1. Snapshot current localStorage data to sessionStorage
+  backupUid = currentUid;
+  for (const key of SYNC_KEYS) {
+    const val = localStorage.getItem(key);
+    sessionStorage.setItem(
+      BACKUP_PREFIX + key,
+      val !== null ? val : "__undefined__",
+    );
+  }
+
+  // 2. Stop live sync so nothing overwrites the viewed data
+  stopCloudSync();
+
+  // 3. Fetch and apply each key from Firestore
+  let loaded = 0;
+  const missing: string[] = [];
+
+  for (const key of SYNC_KEYS) {
+    try {
+      const ref = doc(db, "users", targetUid, "data", key);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const value = snap.data()["value"];
+        if (value !== undefined && value !== null) {
+          const serialized =
+            typeof value === "string" ? value : JSON.stringify(value);
+          localStorage.setItem(key, serialized);
+          loaded++;
+        } else {
+          localStorage.removeItem(key);
+          missing.push(key);
+        }
+      } else {
+        localStorage.removeItem(key);
+        missing.push(key);
+      }
+    } catch (err) {
+      console.warn(
+        `[cloudSync] loadUserDataForViewing failed for "${key}":`,
+        err,
+      );
+      missing.push(key);
+    }
+  }
+
+  notify();
+  return { loaded, missing };
+}
+
+/**
+ * DEV ONLY — Restore the data that was backed up before loadUserDataForViewing.
+ * Re-attaches cloud sync for the original user.
+ */
+export async function restoreMyData(
+  reinitFn?: (uid: string) => Promise<void>,
+): Promise<void> {
+  for (const key of SYNC_KEYS) {
+    const val = sessionStorage.getItem(BACKUP_PREFIX + key);
+    if (val === null) continue;
+    if (val === "__undefined__") {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, val);
+    }
+    sessionStorage.removeItem(BACKUP_PREFIX + key);
+  }
+
+  if (backupUid) {
+    if (reinitFn) {
+      await reinitFn(backupUid);
+    } else {
+      initCloudSync(backupUid);
+    }
+  }
+
+  backupUid = null;
+  notify();
+}
+
+/** Whether the app is currently showing another user's data. */
+export function isViewingOtherUser(): boolean {
+  return sessionStorage.getItem(BACKUP_PREFIX + "expenses") !== null;
+}
