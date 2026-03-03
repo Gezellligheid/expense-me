@@ -13,6 +13,7 @@ export type Theme = "light" | "dark" | "system";
 export interface AppSettings {
   currency: string;
   theme: Theme;
+  dailyView: boolean;
 }
 
 export const CURRENCIES: Currency[] = [
@@ -50,6 +51,7 @@ export const CURRENCIES: Currency[] = [
 const DEFAULT_SETTINGS: AppSettings = {
   currency: "USD",
   theme: "light",
+  dailyView: false,
 };
 
 function loadSettings(): AppSettings {
@@ -146,6 +148,12 @@ export function useSettings() {
     window.dispatchEvent(new Event("storage-updated"));
   }
 
+  const dailyView = computed(() => settings.value.dailyView);
+
+  function setDailyView(enabled: boolean) {
+    settings.value = { ...settings.value, dailyView: enabled };
+  }
+
   /** Call once on app mount to apply the persisted theme. */
   function initTheme() {
     applyTheme(settings.value.theme);
@@ -175,5 +183,7 @@ export function useSettings() {
     formatCurrency,
     isTestMode,
     setTestMode,
+    dailyView,
+    setDailyView,
   };
 }

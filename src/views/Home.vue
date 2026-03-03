@@ -34,7 +34,7 @@ ChartJS.register(
   Title,
 );
 
-const { formatCurrency: fmt, isTestMode } = useSettings();
+const { formatCurrency: fmt, isTestMode, dailyView } = useSettings();
 const { isSimulating } = useSimulation();
 
 // Use test data in dev test mode, real storage otherwise
@@ -410,6 +410,8 @@ onMounted(() => {
   // Always default to current month
   const today = new Date();
   setMonthRange(today.getFullYear(), today.getMonth());
+  // Default selected day to today for daily view
+  selectedDay.value = todayDateStr();
   window.addEventListener("storage-updated", handleStorageUpdate);
 });
 
@@ -895,22 +897,1151 @@ const exportCSV = () => {
   a.click();
   URL.revokeObjectURL(url);
 };
+
+// ── Daily View ─────────────────────────────────────────────────────────────
+const selectedDay = ref<string>("");
+const showMonthSummary = ref(false);
+
+const dayExpenses = computed(() => {
+  if (!selectedDay.value) return [];
+  const day = selectedDay.value;
+  const ym = day.substring(0, 7);
+  const manual = expenses.value.filter((e) => e.date === day);
+  const recurring = ds.value
+    .calculateRecurringExpensesForMonth(ym)
+    .filter((e) => e.date === day);
+  return [...manual, ...recurring];
+});
+
+const dayIncomes = computed(() => {
+  if (!selectedDay.value) return [];
+  const day = selectedDay.value;
+  const ym = day.substring(0, 7);
+  const manual = incomes.value.filter((i) => i.date === day);
+  const recurring = ds.value
+    .calculateRecurringIncomesForMonth(ym)
+    .filter((i) => i.date === day);
+  return [...manual, ...recurring];
+});
+
+const dayTotalExpenses = computed(() =>
+  dayExpenses.value.reduce((s, e) => s + parseFloat(e.amount || "0"), 0),
+);
+
+const dayTotalIncome = computed(() =>
+  dayIncomes.value.reduce((s, i) => s + parseFloat(i.amount || "0"), 0),
+);
+
+const dayBalance = computed(() =>
+  selectedDay.value ? calcBalanceAtDate(selectedDay.value) : 0,
+);
+
+const todayDateStr = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const isDailyToday = computed(() => selectedDay.value === todayDateStr());
+
+const dayLabel = computed(() => {
+  if (!selectedDay.value) return "";
+  const d = new Date(selectedDay.value + "T00:00:00");
+  const today = todayDateStr();
+  const yesterday = (() => {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    return `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+  })();
+  const dateStr = d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  if (selectedDay.value === today) return `Today — ${dateStr}`;
+  if (selectedDay.value === yesterday) return `Yesterday — ${dateStr}`;
+  return dateStr;
+});
+
+const shiftDay = (delta: number) => {
+  const base = selectedDay.value || todayDateStr();
+  const d = new Date(base + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  selectedDay.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const goToToday = () => {
+  selectedDay.value = todayDateStr();
+};
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Month Selector and Initial Balance -->
-    <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
-      <div class="flex flex-col gap-4">
-        <!-- Row 1: title + action buttons -->
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
-            Financial Overview
-          </h2>
-          <div class="flex items-center gap-2 flex-wrap">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- DAILY VIEW                                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template v-if="dailyView">
+      <!-- Day navigation header -->
+      <div class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-4 sm:p-6">
+        <div class="flex flex-col gap-4">
+          <!-- Title row -->
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2
+              class="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"
+            >
+              <span class="text-2xl">📅</span>
+              Daily Overview
+            </h2>
+            <!-- Month Summary toggle -->
             <button
-              @click="openInitialBalanceModal"
-              class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+              @click="showMonthSummary = !showMonthSummary"
+              class="text-sm px-3 py-1.5 rounded-lg border transition-all flex items-center gap-2"
+              :class="
+                showMonthSummary
+                  ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm'
+                  : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50'
+              "
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+              {{ showMonthSummary ? "Hide Month Stats" : "Show Month Stats" }}
+            </button>
+          </div>
+
+          <!-- Day navigation row -->
+          <div class="flex items-center gap-3">
+            <button
+              @click="shiftDay(-1)"
+              title="Previous day"
+              class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+            >
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </button>
+
+            <div class="flex-1 text-center">
+              <p class="text-lg font-bold text-gray-800 dark:text-gray-100">
+                {{ dayLabel }}
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                {{ selectedDay }}
+              </p>
+            </div>
+
+            <button
+              @click="shiftDay(1)"
+              :disabled="isDailyToday"
+              title="Next day"
+              class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
+
+            <button
+              v-if="!isDailyToday"
+              @click="goToToday"
+              class="text-xs px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors font-medium"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Day stat cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- Day income -->
+        <div
+          class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg shadow-lg p-5 text-white"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-green-100 text-sm font-medium">Income Today</p>
+              <p class="text-3xl font-bold mt-1">{{ fmt(dayTotalIncome) }}</p>
+              <p class="text-green-100 text-xs mt-1">
+                {{ dayIncomes.length }} transaction{{
+                  dayIncomes.length !== 1 ? "s" : ""
+                }}
+              </p>
+            </div>
+            <svg
+              class="w-10 h-10 text-green-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 11l5-5m0 0l5 5m-5-5v12"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Day expenses -->
+        <div
+          class="bg-gradient-to-br from-red-500 to-pink-600 rounded-lg shadow-lg p-5 text-white"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-red-100 text-sm font-medium">Spent Today</p>
+              <p class="text-3xl font-bold mt-1">{{ fmt(dayTotalExpenses) }}</p>
+              <p class="text-red-100 text-xs mt-1">
+                {{ dayExpenses.length }} transaction{{
+                  dayExpenses.length !== 1 ? "s" : ""
+                }}
+              </p>
+            </div>
+            <svg
+              class="w-10 h-10 text-red-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17 13l-5 5m0 0l-5-5m5 5V6"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Running balance at end of day -->
+        <div
+          :class="[
+            'rounded-lg shadow-lg p-5 text-white',
+            dayBalance >= 0
+              ? 'bg-gradient-to-br from-blue-500 to-purple-600'
+              : 'bg-gradient-to-br from-orange-500 to-red-600',
+          ]"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-white/90 text-sm font-medium">
+                Balance at End of Day
+              </p>
+              <p class="text-3xl font-bold mt-1">
+                {{ fmt(Math.abs(dayBalance)) }}
+              </p>
+              <p class="text-white/80 text-xs mt-1">
+                {{ dayBalance >= 0 ? "Surplus" : "Deficit" }}
+              </p>
+            </div>
+            <svg
+              class="w-10 h-10 text-white/70"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Day transaction list -->
+      <div class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6">
+        <h3
+          class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2"
+        >
+          <svg
+            class="w-5 h-5 text-indigo-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            />
+          </svg>
+          Transactions
+        </h3>
+
+        <div
+          v-if="dayExpenses.length > 0 || dayIncomes.length > 0"
+          class="space-y-2"
+        >
+          <!-- Income rows -->
+          <div
+            v-for="(inc, idx) in dayIncomes"
+            :key="'inc-' + idx"
+            class="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div
+                class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-600 dark:text-green-300 text-sm font-bold"
+              >
+                {{ inc.description ? inc.description[0]!.toUpperCase() : "?" }}
+              </div>
+              <div class="min-w-0">
+                <p
+                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                >
+                  {{ inc.description || "Income" }}
+                </p>
+                <p class="text-xs text-green-500 dark:text-green-400">Income</p>
+              </div>
+            </div>
+            <span
+              class="font-bold text-green-600 dark:text-green-400 ml-3 shrink-0"
+              >+{{ fmt(parseFloat(inc.amount)) }}</span
+            >
+          </div>
+
+          <!-- Expense rows -->
+          <div
+            v-for="(exp, idx) in dayExpenses"
+            :key="'exp-' + idx"
+            class="flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div
+                class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold"
+              >
+                {{ exp.description ? exp.description[0]!.toUpperCase() : "?" }}
+              </div>
+              <div class="min-w-0">
+                <p
+                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                >
+                  {{ exp.description || "Expense" }}
+                </p>
+                <p class="text-xs text-red-500 dark:text-red-400">Expense</p>
+              </div>
+            </div>
+            <span class="font-bold text-red-600 dark:text-red-400 ml-3 shrink-0"
+              >-{{ fmt(parseFloat(exp.amount)) }}</span
+            >
+          </div>
+        </div>
+
+        <div v-else class="text-center text-gray-400 dark:text-gray-500 py-12">
+          <svg
+            class="w-12 h-12 mx-auto mb-3 text-gray-200 dark:text-gray-700"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            />
+          </svg>
+          <p class="text-sm">No transactions on this day</p>
+        </div>
+      </div>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- MONTHLY VIEW (shown always when not in daily mode, or when the     -->
+    <!-- user clicks "Show Month Stats" from within daily mode)             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template v-if="!dailyView || showMonthSummary">
+      <!-- Month Selector and Initial Balance -->
+      <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
+        <div class="flex flex-col gap-4">
+          <!-- Row 1: title + action buttons -->
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
+              Financial Overview
+            </h2>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button
+                @click="openInitialBalanceModal"
+                class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
+                </svg>
+                {{ initialBalance !== null ? "Edit" : "Set" }} Initial Balance
+              </button>
+            </div>
+          </div>
+          <!-- Row 2: exports + date range -->
+          <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+            <!-- Export buttons -->
+            <div class="flex items-center gap-2">
+              <button
+                @click="exportExcel"
+                class="text-sm px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-2"
+                title="Export as Excel (.xlsx)"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                Excel
+              </button>
+              <button
+                @click="exportCSV"
+                class="text-sm px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+                title="Export as CSV"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                CSV
+              </button>
+            </div>
+            <!-- Date range section -->
+            <label class="text-sm font-medium text-gray-700 sr-only"
+              >Date range</label
+            >
+            <div class="flex flex-col gap-2 sm:ml-auto">
+              <!-- Quick-select pills -->
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs font-medium text-gray-500 mr-0.5"
+                  >Quick:</span
+                >
+                <button
+                  @click="selectThisMonth"
+                  class="text-xs px-2.5 py-1 rounded-full border border-blue-300 text-blue-700 hover:bg-blue-500 hover:text-white transition-colors"
+                >
+                  This Month
+                </button>
+                <button
+                  @click="selectLastMonth"
+                  class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+                >
+                  Last Month
+                </button>
+                <button
+                  @click="selectLast3Months"
+                  class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+                >
+                  Last 3 Months
+                </button>
+                <button
+                  @click="selectThisYear"
+                  class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
+                >
+                  This Year
+                </button>
+              </div>
+              <!-- Custom date range picker -->
+              <div class="flex items-center gap-1">
+                <button
+                  @click="shiftMonth(-1)"
+                  title="Previous month"
+                  class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                </button>
+                <DateRangePicker
+                  :start="rangeStart"
+                  :end="rangeEnd"
+                  :expense-dates="allExpenseDates"
+                  :income-dates="allIncomeDates"
+                  @update:start="rangeStart = $event"
+                  @update:end="rangeEnd = $event"
+                />
+                <button
+                  @click="shiftMonth(1)"
+                  title="Next month"
+                  class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Income Card -->
+        <div
+          class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-green-100 text-sm font-medium">Total Income</p>
+              <p class="text-3xl font-bold mt-2">{{ fmt(totalIncome) }}</p>
+              <p class="text-green-100 text-xs mt-1">
+                {{ filteredIncomes.length }} transactions
+              </p>
+            </div>
+            <svg
+              class="w-12 h-12 text-green-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 11l5-5m0 0l5 5m-5-5v12"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Expenses Card -->
+        <div
+          class="bg-gradient-to-br from-red-500 to-pink-600 rounded-lg shadow-lg p-6 text-white"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-red-100 text-sm font-medium">Total Expenses</p>
+              <p class="text-3xl font-bold mt-2">
+                {{ fmt(totalExpenses) }}
+              </p>
+              <p class="text-red-100 text-xs mt-1">
+                {{ filteredExpenses.length }} transactions
+              </p>
+            </div>
+            <svg
+              class="w-12 h-12 text-red-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17 13l-5 5m0 0l-5-5m5 5V6"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Balance Card -->
+        <div
+          :class="[
+            'rounded-lg shadow-lg p-6 text-white',
+            balance >= 0
+              ? 'bg-gradient-to-br from-blue-500 to-purple-600'
+              : 'bg-gradient-to-br from-orange-500 to-red-600',
+            isSimulating ? 'sim-entry' : '',
+          ]"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-white text-opacity-90 text-sm font-medium">
+                Balance
+              </p>
+              <p class="text-3xl font-bold mt-2">
+                {{ fmt(Math.abs(balance)) }}
+              </p>
+              <p class="text-white text-opacity-90 text-xs mt-1">
+                {{ balance >= 0 ? "Surplus" : "Deficit" }}
+              </p>
+            </div>
+            <svg
+              class="w-12 h-12 text-white text-opacity-70"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <!-- This Month Budget Card -->
+        <div
+          :class="[
+            'rounded-lg shadow-lg p-6 text-white',
+            thisMonthLeft >= 0
+              ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
+              : 'bg-gradient-to-br from-rose-500 to-red-600',
+            budgetChanged ? 'sim-entry' : '',
+          ]"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <p class="text-white/90 text-sm font-medium">
+                {{ budgetCardLabel }}
+              </p>
+              <p class="text-3xl font-bold mt-1">
+                {{ fmt(Math.abs(thisMonthLeft)) }}
+              </p>
+              <p class="text-white/80 text-xs mt-1">
+                {{ thisMonthLeft >= 0 ? "under budget" : "over budget" }}
+              </p>
+            </div>
+            <svg
+              class="w-12 h-12 text-white/70"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
+            </svg>
+          </div>
+          <!-- Spend progress bar -->
+          <div class="mt-2">
+            <div class="flex justify-between text-xs text-white/75 mb-1">
+              <span>{{ fmt(thisMonthExpenses) }} spent</span>
+              <span>of {{ fmt(thisMonthIncome) }}</span>
+            </div>
+            <div class="w-full bg-white/20 rounded-full h-1.5">
+              <div
+                class="h-1.5 rounded-full transition-all duration-500"
+                :class="thisMonthSpendPct >= 100 ? 'bg-red-300' : 'bg-white/80'"
+                :style="{ width: thisMonthSpendPct + '%' }"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly Insights -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h3
+          class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"
+        >
+          <svg
+            class="w-6 h-6 text-blue-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+          Monthly Insights
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <!-- Average Daily Spending -->
+          <div
+            class="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-100"
+          >
+            <p class="text-sm text-purple-600 font-medium">
+              Avg. Daily Spending
+            </p>
+            <p class="text-2xl font-bold text-purple-700 mt-1">
+              {{ fmt(averageDailySpending) }}
+            </p>
+            <p class="text-xs text-purple-500 mt-1">Per day this month</p>
+          </div>
+
+          <!-- Biggest Expense -->
+          <div
+            class="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg border border-orange-100"
+          >
+            <p class="text-sm text-orange-600 font-medium">Biggest Expense</p>
+            <p class="text-2xl font-bold text-orange-700 mt-1">
+              {{
+                biggestExpense ? fmt(parseFloat(biggestExpense.amount)) : fmt(0)
+              }}
+            </p>
+            <p class="text-xs text-orange-500 mt-1 truncate">
+              {{ biggestExpense?.description || "No expenses yet" }}
+            </p>
+          </div>
+
+          <!-- Savings Rate -->
+          <div
+            class="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border border-green-100"
+          >
+            <p class="text-sm text-green-600 font-medium">Savings Rate</p>
+            <p class="text-2xl font-bold text-green-700 mt-1">
+              {{ savingsRate.toFixed(1) }}%
+            </p>
+            <p class="text-xs text-green-500 mt-1">
+              {{ savingsRate >= 0 ? "Saving money" : "Spending more" }}
+            </p>
+          </div>
+
+          <!-- Month Comparison -->
+          <div
+            v-if="previousMonthData"
+            class="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
+          >
+            <p class="text-sm text-blue-600 font-medium">vs Last Month</p>
+            <p
+              class="text-2xl font-bold mt-1"
+              :class="
+                previousMonthData.change > 0 ? 'text-red-700' : 'text-green-700'
+              "
+            >
+              {{ previousMonthData.change > 0 ? "+" : ""
+              }}{{ fmt(Math.abs(previousMonthData.change)) }}
+            </p>
+            <p
+              class="text-xs mt-1"
+              :class="
+                previousMonthData.change > 0 ? 'text-red-500' : 'text-green-500'
+              "
+            >
+              {{ previousMonthData.change > 0 ? "↑" : "↓" }}
+              {{ Math.abs(previousMonthData.changePercent).toFixed(1) }}%
+              spending
+            </p>
+          </div>
+          <div
+            v-else
+            class="p-4 bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg border border-gray-100"
+          >
+            <p class="text-sm text-gray-600 font-medium">vs Last Month</p>
+            <p class="text-2xl font-bold text-gray-700 mt-1">—</p>
+            <p class="text-xs text-gray-500 mt-1">First month</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expenses Breakdown Chart -->
+      <div
+        v-if="Object.keys(expensesByCategory).length > 0"
+        class="bg-white rounded-lg shadow-md p-6"
+      >
+        <h3 class="text-xl font-bold text-gray-800 mb-6">
+          Expenses by Category
+        </h3>
+        <div class="relative h-72">
+          <Doughnut :data="doughnutChartData" :options="doughnutChartOptions" />
+        </div>
+      </div>
+
+      <!-- Income vs Expenses Chart -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h3 class="text-xl font-bold text-gray-800 mb-6">Income vs Expenses</h3>
+        <div class="relative h-64">
+          <Bar :data="barChartData" :options="barChartOptions" />
+        </div>
+      </div>
+
+      <!-- Transaction History -->
+      <div
+        id="history"
+        class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6"
+      >
+        <div class="flex items-center justify-between mb-5">
+          <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+            Transaction History
+          </h3>
+          <span class="text-xs text-gray-400 dark:text-gray-500"
+            >Manual transactions only</span
+          >
+        </div>
+
+        <!-- Summary mini-cards -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+          <div
+            class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex items-center gap-3"
+          >
+            <div
+              class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0"
+            >
+              <svg
+                class="w-4 h-4 text-red-600 dark:text-red-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 13l-5 5m0 0l-5-5m5 5V6"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-red-500 dark:text-red-400 font-medium">
+                {{ manualExpenses.length }} Expenses
+              </p>
+              <p class="text-base font-bold text-red-700 dark:text-red-300">
+                {{
+                  fmt(
+                    manualExpenses.reduce(
+                      (s, e) => s + parseFloat(e.amount || "0"),
+                      0,
+                    ),
+                  )
+                }}
+              </p>
+            </div>
+          </div>
+          <div
+            class="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 flex items-center gap-3"
+          >
+            <div
+              class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0"
+            >
+              <svg
+                class="w-4 h-4 text-green-600 dark:text-green-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 11l5-5m0 0l5 5m-5-5v12"
+                />
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-green-500 dark:text-green-400 font-medium">
+                {{ manualIncomes.length }} Incomes
+              </p>
+              <p class="text-base font-bold text-green-700 dark:text-green-300">
+                {{
+                  fmt(
+                    manualIncomes.reduce(
+                      (s, i) => s + parseFloat(i.amount || "0"),
+                      0,
+                    ),
+                  )
+                }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div
+          class="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit"
+        >
+          <button
+            @click="historyTab = 'expenses'"
+            :class="
+              historyTab === 'expenses'
+                ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            "
+            class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+          >
+            Expenses
+          </button>
+          <button
+            @click="historyTab = 'incomes'"
+            :class="
+              historyTab === 'incomes'
+                ? 'bg-white dark:bg-gray-700 text-green-600 dark:text-green-400 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            "
+            class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+          >
+            Incomes
+          </button>
+          <button
+            @click="historyTab = 'corrections'"
+            :class="
+              historyTab === 'corrections'
+                ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            "
+            class="px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5"
+          >
+            Corrections
+            <span
+              v-if="balanceUpdates.length > 0"
+              class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold"
+              :class="
+                historyTab === 'corrections'
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-gray-300 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+              "
+              >{{ balanceUpdates.length }}</span
+            >
+          </button>
+        </div>
+
+        <!-- Expense rows -->
+        <div v-if="historyTab === 'expenses'">
+          <div v-if="manualExpenses.length > 0" class="space-y-2">
+            <div
+              v-for="(exp, idx) in manualExpenses"
+              :key="idx"
+              :class="[
+                'sim-list-item flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl group',
+                exp._sim ? 'sim-entry' : '',
+              ]"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div
+                  class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold"
+                >
+                  {{
+                    exp.description ? exp.description[0]!.toUpperCase() : "?"
+                  }}
+                </div>
+                <div class="min-w-0">
+                  <p
+                    class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                  >
+                    {{ exp.description || "Uncategorized" }}
+                  </p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      new Date(exp.date + "T00:00:00").toLocaleDateString(
+                        "en-US",
+                        { weekday: "short", month: "short", day: "numeric" },
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 ml-3">
+                <span
+                  v-if="exp.excludeFromBudget"
+                  class="hidden sm:inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium"
+                  title="Excluded from budget"
+                >
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                    />
+                  </svg>
+                  Budget
+                </span>
+                <span class="font-bold text-red-600 dark:text-red-400">{{
+                  fmt(parseFloat(exp.amount))
+                }}</span>
+                <button
+                  @click="openEditExpense(exp)"
+                  class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
+                  title="Edit"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  @click="removeExpense(exp)"
+                  class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                  title="Remove"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <p
+            v-else
+            class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
+          >
+            No manual expenses in this range
+          </p>
+        </div>
+
+        <!-- Income rows -->
+        <div v-if="historyTab === 'incomes'">
+          <div v-if="manualIncomes.length > 0" class="space-y-2">
+            <div
+              v-for="(inc, idx) in manualIncomes"
+              :key="idx"
+              :class="[
+                'sim-list-item flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl group',
+                inc._sim ? 'sim-entry' : '',
+              ]"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div
+                  class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold"
+                >
+                  {{
+                    inc.description ? inc.description[0]!.toUpperCase() : "?"
+                  }}
+                </div>
+                <div class="min-w-0">
+                  <p
+                    class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                  >
+                    {{ inc.description || "Uncategorized" }}
+                  </p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      new Date(inc.date + "T00:00:00").toLocaleDateString(
+                        "en-US",
+                        { weekday: "short", month: "short", day: "numeric" },
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 ml-3">
+                <span class="font-bold text-green-600 dark:text-green-400">{{
+                  fmt(parseFloat(inc.amount))
+                }}</span>
+                <button
+                  @click="removeIncome(inc)"
+                  class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                  title="Remove"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <p
+            v-else
+            class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
+          >
+            No manual income in this range
+          </p>
+        </div>
+
+        <!-- Corrections tab -->
+        <div v-if="historyTab === 'corrections'">
+          <div class="flex justify-end mb-3">
+            <button
+              @click="openBalanceUpdateModal"
+              class="flex items-center gap-2 text-sm px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
             >
               <svg
                 class="w-4 h-4"
@@ -925,846 +2056,114 @@ const exportCSV = () => {
                   d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                 />
               </svg>
-              {{ initialBalance !== null ? "Edit" : "Set" }} Initial Balance
+              Add Correction
             </button>
           </div>
-        </div>
-        <!-- Row 2: exports + date range -->
-        <div class="flex flex-col sm:flex-row sm:items-end gap-3">
-          <!-- Export buttons -->
-          <div class="flex items-center gap-2">
-            <button
-              @click="exportExcel"
-              class="text-sm px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-2"
-              title="Export as Excel (.xlsx)"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Excel
-            </button>
-            <button
-              @click="exportCSV"
-              class="text-sm px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-              title="Export as CSV"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              CSV
-            </button>
-          </div>
-          <!-- Date range section -->
-          <label class="text-sm font-medium text-gray-700 sr-only"
-            >Date range</label
-          >
-          <div class="flex flex-col gap-2 sm:ml-auto">
-            <!-- Quick-select pills -->
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-xs font-medium text-gray-500 mr-0.5"
-                >Quick:</span
-              >
-              <button
-                @click="selectThisMonth"
-                class="text-xs px-2.5 py-1 rounded-full border border-blue-300 text-blue-700 hover:bg-blue-500 hover:text-white transition-colors"
-              >
-                This Month
-              </button>
-              <button
-                @click="selectLastMonth"
-                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >
-                Last Month
-              </button>
-              <button
-                @click="selectLast3Months"
-                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >
-                Last 3 Months
-              </button>
-              <button
-                @click="selectThisYear"
-                class="text-xs px-2.5 py-1 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-500 hover:text-white transition-colors"
-              >
-                This Year
-              </button>
-            </div>
-            <!-- Custom date range picker -->
-            <div class="flex items-center gap-1">
-              <button
-                @click="shiftMonth(-1)"
-                title="Previous month"
-                class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-              <DateRangePicker
-                :start="rangeStart"
-                :end="rangeEnd"
-                :expense-dates="allExpenseDates"
-                :income-dates="allIncomeDates"
-                @update:start="rangeStart = $event"
-                @update:end="rangeEnd = $event"
-              />
-              <button
-                @click="shiftMonth(1)"
-                title="Next month"
-                class="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Summary Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      <!-- Income Card -->
-      <div
-        class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg shadow-lg p-6 text-white"
-      >
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-green-100 text-sm font-medium">Total Income</p>
-            <p class="text-3xl font-bold mt-2">{{ fmt(totalIncome) }}</p>
-            <p class="text-green-100 text-xs mt-1">
-              {{ filteredIncomes.length }} transactions
-            </p>
-          </div>
-          <svg
-            class="w-12 h-12 text-green-200"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M7 11l5-5m0 0l5 5m-5-5v12"
-            />
-          </svg>
-        </div>
-      </div>
-
-      <!-- Expenses Card -->
-      <div
-        class="bg-gradient-to-br from-red-500 to-pink-600 rounded-lg shadow-lg p-6 text-white"
-      >
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-red-100 text-sm font-medium">Total Expenses</p>
-            <p class="text-3xl font-bold mt-2">
-              {{ fmt(totalExpenses) }}
-            </p>
-            <p class="text-red-100 text-xs mt-1">
-              {{ filteredExpenses.length }} transactions
-            </p>
-          </div>
-          <svg
-            class="w-12 h-12 text-red-200"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M17 13l-5 5m0 0l-5-5m5 5V6"
-            />
-          </svg>
-        </div>
-      </div>
-
-      <!-- Balance Card -->
-      <div
-        :class="[
-          'rounded-lg shadow-lg p-6 text-white',
-          balance >= 0
-            ? 'bg-gradient-to-br from-blue-500 to-purple-600'
-            : 'bg-gradient-to-br from-orange-500 to-red-600',
-          isSimulating ? 'sim-entry' : '',
-        ]"
-      >
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-white text-opacity-90 text-sm font-medium">
-              Balance
-            </p>
-            <p class="text-3xl font-bold mt-2">
-              {{ fmt(Math.abs(balance)) }}
-            </p>
-            <p class="text-white text-opacity-90 text-xs mt-1">
-              {{ balance >= 0 ? "Surplus" : "Deficit" }}
-            </p>
-          </div>
-          <svg
-            class="w-12 h-12 text-white text-opacity-70"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </div>
-      </div>
-
-      <!-- This Month Budget Card -->
-      <div
-        :class="[
-          'rounded-lg shadow-lg p-6 text-white',
-          thisMonthLeft >= 0
-            ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
-            : 'bg-gradient-to-br from-rose-500 to-red-600',
-          budgetChanged ? 'sim-entry' : '',
-        ]"
-      >
-        <div class="flex items-center justify-between mb-3">
-          <div>
-            <p class="text-white/90 text-sm font-medium">
-              {{ budgetCardLabel }}
-            </p>
-            <p class="text-3xl font-bold mt-1">
-              {{ fmt(Math.abs(thisMonthLeft)) }}
-            </p>
-            <p class="text-white/80 text-xs mt-1">
-              {{ thisMonthLeft >= 0 ? "under budget" : "over budget" }}
-            </p>
-          </div>
-          <svg
-            class="w-12 h-12 text-white/70"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-        <!-- Spend progress bar -->
-        <div class="mt-2">
-          <div class="flex justify-between text-xs text-white/75 mb-1">
-            <span>{{ fmt(thisMonthExpenses) }} spent</span>
-            <span>of {{ fmt(thisMonthIncome) }}</span>
-          </div>
-          <div class="w-full bg-white/20 rounded-full h-1.5">
+          <div v-if="balanceUpdates.length > 0" class="space-y-2">
             <div
-              class="h-1.5 rounded-full transition-all duration-500"
-              :class="thisMonthSpendPct >= 100 ? 'bg-red-300' : 'bg-white/80'"
-              :style="{ width: thisMonthSpendPct + '%' }"
-            />
+              v-for="upd in [...balanceUpdates].sort((a, b) =>
+                b.date.localeCompare(a.date),
+              )"
+              :key="upd.id"
+              class="flex items-center justify-between px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-xl group"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div
+                  class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center shrink-0"
+                >
+                  <svg
+                    class="w-4 h-4 text-amber-600 dark:text-amber-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                </div>
+                <div class="min-w-0">
+                  <p
+                    class="font-medium text-gray-800 dark:text-gray-100 truncate"
+                  >
+                    {{ upd.note || "Balance correction" }}
+                  </p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      new Date(upd.date + "T00:00:00").toLocaleDateString(
+                        "en-US",
+                        {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 ml-3">
+                <span
+                  class="font-bold text-amber-700 dark:text-amber-400 tabular-nums"
+                  >{{ fmt(upd.amount) }}</span
+                >
+                <button
+                  @click="openEditBalanceUpdate(upd)"
+                  class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
+                  title="Edit"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  @click="removeBalanceUpdate(upd.id)"
+                  class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
+                  title="Remove"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Monthly Insights -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <svg
-          class="w-6 h-6 text-blue-500"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-          />
-        </svg>
-        Monthly Insights
-      </h3>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <!-- Average Daily Spending -->
-        <div
-          class="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-100"
-        >
-          <p class="text-sm text-purple-600 font-medium">Avg. Daily Spending</p>
-          <p class="text-2xl font-bold text-purple-700 mt-1">
-            {{ fmt(averageDailySpending) }}
-          </p>
-          <p class="text-xs text-purple-500 mt-1">Per day this month</p>
-        </div>
-
-        <!-- Biggest Expense -->
-        <div
-          class="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg border border-orange-100"
-        >
-          <p class="text-sm text-orange-600 font-medium">Biggest Expense</p>
-          <p class="text-2xl font-bold text-orange-700 mt-1">
-            {{
-              biggestExpense ? fmt(parseFloat(biggestExpense.amount)) : fmt(0)
-            }}
-          </p>
-          <p class="text-xs text-orange-500 mt-1 truncate">
-            {{ biggestExpense?.description || "No expenses yet" }}
-          </p>
-        </div>
-
-        <!-- Savings Rate -->
-        <div
-          class="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border border-green-100"
-        >
-          <p class="text-sm text-green-600 font-medium">Savings Rate</p>
-          <p class="text-2xl font-bold text-green-700 mt-1">
-            {{ savingsRate.toFixed(1) }}%
-          </p>
-          <p class="text-xs text-green-500 mt-1">
-            {{ savingsRate >= 0 ? "Saving money" : "Spending more" }}
-          </p>
-        </div>
-
-        <!-- Month Comparison -->
-        <div
-          v-if="previousMonthData"
-          class="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
-        >
-          <p class="text-sm text-blue-600 font-medium">vs Last Month</p>
           <p
-            class="text-2xl font-bold mt-1"
-            :class="
-              previousMonthData.change > 0 ? 'text-red-700' : 'text-green-700'
-            "
+            v-else
+            class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
           >
-            {{ previousMonthData.change > 0 ? "+" : ""
-            }}{{ fmt(Math.abs(previousMonthData.change)) }}
-          </p>
-          <p
-            class="text-xs mt-1"
-            :class="
-              previousMonthData.change > 0 ? 'text-red-500' : 'text-green-500'
-            "
-          >
-            {{ previousMonthData.change > 0 ? "↑" : "↓" }}
-            {{ Math.abs(previousMonthData.changePercent).toFixed(1) }}% spending
+            No balance corrections yet
           </p>
         </div>
-        <div
-          v-else
-          class="p-4 bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg border border-gray-100"
-        >
-          <p class="text-sm text-gray-600 font-medium">vs Last Month</p>
-          <p class="text-2xl font-bold text-gray-700 mt-1">—</p>
-          <p class="text-xs text-gray-500 mt-1">First month</p>
-        </div>
       </div>
-    </div>
-
-    <!-- Expenses Breakdown Chart -->
-    <div
-      v-if="Object.keys(expensesByCategory).length > 0"
-      class="bg-white rounded-lg shadow-md p-6"
-    >
-      <h3 class="text-xl font-bold text-gray-800 mb-6">Expenses by Category</h3>
-      <div class="relative h-72">
-        <Doughnut :data="doughnutChartData" :options="doughnutChartOptions" />
-      </div>
-    </div>
-
-    <!-- Income vs Expenses Chart -->
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <h3 class="text-xl font-bold text-gray-800 mb-6">Income vs Expenses</h3>
-      <div class="relative h-64">
-        <Bar :data="barChartData" :options="barChartOptions" />
-      </div>
-    </div>
-
-    <!-- Transaction History -->
-    <div
-      id="history"
-      class="bg-white dark:bg-gray-900 rounded-lg shadow-md p-6"
-    >
-      <div class="flex items-center justify-between mb-5">
-        <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">
-          Transaction History
-        </h3>
-        <span class="text-xs text-gray-400 dark:text-gray-500"
-          >Manual transactions only</span
-        >
-      </div>
-
-      <!-- Summary mini-cards -->
-      <div class="grid grid-cols-2 gap-3 mb-5">
-        <div
-          class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex items-center gap-3"
-        >
-          <div
-            class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0"
-          >
-            <svg
-              class="w-4 h-4 text-red-600 dark:text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M17 13l-5 5m0 0l-5-5m5 5V6"
-              />
-            </svg>
-          </div>
-          <div>
-            <p class="text-xs text-red-500 dark:text-red-400 font-medium">
-              {{ manualExpenses.length }} Expenses
-            </p>
-            <p class="text-base font-bold text-red-700 dark:text-red-300">
-              {{
-                fmt(
-                  manualExpenses.reduce(
-                    (s, e) => s + parseFloat(e.amount || "0"),
-                    0,
-                  ),
-                )
-              }}
-            </p>
-          </div>
-        </div>
-        <div
-          class="p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 flex items-center gap-3"
-        >
-          <div
-            class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0"
-          >
-            <svg
-              class="w-4 h-4 text-green-600 dark:text-green-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M7 11l5-5m0 0l5 5m-5-5v12"
-              />
-            </svg>
-          </div>
-          <div>
-            <p class="text-xs text-green-500 dark:text-green-400 font-medium">
-              {{ manualIncomes.length }} Incomes
-            </p>
-            <p class="text-base font-bold text-green-700 dark:text-green-300">
-              {{
-                fmt(
-                  manualIncomes.reduce(
-                    (s, i) => s + parseFloat(i.amount || "0"),
-                    0,
-                  ),
-                )
-              }}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tabs -->
-      <div
-        class="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit"
-      >
-        <button
-          @click="historyTab = 'expenses'"
-          :class="
-            historyTab === 'expenses'
-              ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          "
-          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-        >
-          Expenses
-        </button>
-        <button
-          @click="historyTab = 'incomes'"
-          :class="
-            historyTab === 'incomes'
-              ? 'bg-white dark:bg-gray-700 text-green-600 dark:text-green-400 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          "
-          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-        >
-          Incomes
-        </button>
-        <button
-          @click="historyTab = 'corrections'"
-          :class="
-            historyTab === 'corrections'
-              ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          "
-          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5"
-        >
-          Corrections
-          <span
-            v-if="balanceUpdates.length > 0"
-            class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold"
-            :class="
-              historyTab === 'corrections'
-                ? 'bg-amber-100 text-amber-700'
-                : 'bg-gray-300 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
-            "
-            >{{ balanceUpdates.length }}</span
-          >
-        </button>
-      </div>
-
-      <!-- Expense rows -->
-      <div v-if="historyTab === 'expenses'">
-        <div v-if="manualExpenses.length > 0" class="space-y-2">
-          <div
-            v-for="(exp, idx) in manualExpenses"
-            :key="idx"
-            :class="[
-              'sim-list-item flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl group',
-              exp._sim ? 'sim-entry' : '',
-            ]"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center shrink-0 text-red-500 dark:text-red-300 text-sm font-bold"
-              >
-                {{ exp.description ? exp.description[0]!.toUpperCase() : "?" }}
-              </div>
-              <div class="min-w-0">
-                <p
-                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
-                >
-                  {{ exp.description || "Uncategorized" }}
-                </p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  {{
-                    new Date(exp.date + "T00:00:00").toLocaleDateString(
-                      "en-US",
-                      { weekday: "short", month: "short", day: "numeric" },
-                    )
-                  }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3 shrink-0 ml-3">
-              <span
-                v-if="exp.excludeFromBudget"
-                class="hidden sm:inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium"
-                title="Excluded from budget"
-              >
-                <svg
-                  class="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                  />
-                </svg>
-                Budget
-              </span>
-              <span class="font-bold text-red-600 dark:text-red-400">{{
-                fmt(parseFloat(exp.amount))
-              }}</span>
-              <button
-                @click="openEditExpense(exp)"
-                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
-                title="Edit"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  />
-                </svg>
-              </button>
-              <button
-                @click="removeExpense(exp)"
-                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
-                title="Remove"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-        <p
-          v-else
-          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
-        >
-          No manual expenses in this range
-        </p>
-      </div>
-
-      <!-- Income rows -->
-      <div v-if="historyTab === 'incomes'">
-        <div v-if="manualIncomes.length > 0" class="space-y-2">
-          <div
-            v-for="(inc, idx) in manualIncomes"
-            :key="idx"
-            :class="[
-              'sim-list-item flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40 rounded-xl group',
-              inc._sim ? 'sim-entry' : '',
-            ]"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center shrink-0 text-green-500 dark:text-green-300 text-sm font-bold"
-              >
-                {{ inc.description ? inc.description[0]!.toUpperCase() : "?" }}
-              </div>
-              <div class="min-w-0">
-                <p
-                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
-                >
-                  {{ inc.description || "Uncategorized" }}
-                </p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  {{
-                    new Date(inc.date + "T00:00:00").toLocaleDateString(
-                      "en-US",
-                      { weekday: "short", month: "short", day: "numeric" },
-                    )
-                  }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3 shrink-0 ml-3">
-              <span class="font-bold text-green-600 dark:text-green-400">{{
-                fmt(parseFloat(inc.amount))
-              }}</span>
-              <button
-                @click="removeIncome(inc)"
-                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
-                title="Remove"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-        <p
-          v-else
-          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
-        >
-          No manual income in this range
-        </p>
-      </div>
-
-      <!-- Corrections tab -->
-      <div v-if="historyTab === 'corrections'">
-        <div class="flex justify-end mb-3">
-          <button
-            @click="openBalanceUpdateModal"
-            class="flex items-center gap-2 text-sm px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-              />
-            </svg>
-            Add Correction
-          </button>
-        </div>
-
-        <div v-if="balanceUpdates.length > 0" class="space-y-2">
-          <div
-            v-for="upd in [...balanceUpdates].sort((a, b) =>
-              b.date.localeCompare(a.date),
-            )"
-            :key="upd.id"
-            class="flex items-center justify-between px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 rounded-xl group"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center shrink-0"
-              >
-                <svg
-                  class="w-4 h-4 text-amber-600 dark:text-amber-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </div>
-              <div class="min-w-0">
-                <p
-                  class="font-medium text-gray-800 dark:text-gray-100 truncate"
-                >
-                  {{ upd.note || "Balance correction" }}
-                </p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  {{
-                    new Date(upd.date + "T00:00:00").toLocaleDateString(
-                      "en-US",
-                      {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      },
-                    )
-                  }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3 shrink-0 ml-3">
-              <span
-                class="font-bold text-amber-700 dark:text-amber-400 tabular-nums"
-                >{{ fmt(upd.amount) }}</span
-              >
-              <button
-                @click="openEditBalanceUpdate(upd)"
-                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg transition-all"
-                title="Edit"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  />
-                </svg>
-              </button>
-              <button
-                @click="removeBalanceUpdate(upd.id)"
-                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-all"
-                title="Remove"
-              >
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <p
-          v-else
-          class="text-center text-gray-400 dark:text-gray-500 py-10 text-sm"
-        >
-          No balance corrections yet
-        </p>
-      </div>
-    </div>
+    </template>
+    <!-- end monthly view wrapper -->
   </div>
 
   <!-- Initial Balance Modal -->

@@ -24,6 +24,8 @@ const {
   formatCurrency,
   isTestMode,
   setTestMode,
+  dailyView,
+  setDailyView,
 } = useSettings();
 
 const isDev = import.meta.env.DEV;
@@ -311,6 +313,58 @@ const exportAll = () => {
 
       <!-- Right column -->
       <div class="space-y-6">
+        <!-- ── Dashboard Mode ──────────────────────────────────────── -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h3
+            class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2"
+          >
+            <span class="text-xl">📅</span>
+            Dashboard Mode
+          </h3>
+          <p class="text-sm text-gray-500 mb-4">
+            Toggle between the monthly overview and a day-by-day view
+          </p>
+          <div
+            class="flex items-center justify-between p-4 rounded-xl border-2 transition-all"
+            :class="
+              dailyView
+                ? 'border-indigo-500 bg-indigo-50'
+                : 'border-gray-200 bg-gray-50'
+            "
+          >
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">{{ dailyView ? "📆" : "📊" }}</span>
+              <div>
+                <p class="font-semibold text-gray-800 text-sm">
+                  {{ dailyView ? "Daily View" : "Monthly Overview" }}
+                </p>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  {{
+                    dailyView
+                      ? "Dashboard shows today's statistics"
+                      : "Dashboard shows monthly summary & charts"
+                  }}
+                </p>
+              </div>
+            </div>
+            <button
+              @click="setDailyView(!dailyView)"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+              :class="dailyView ? 'bg-indigo-500' : 'bg-gray-300'"
+              :title="
+                dailyView
+                  ? 'Switch to Monthly Overview'
+                  : 'Switch to Daily View'
+              "
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="dailyView ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- ── Appearance ───────────────────────────────────────────── -->
         <div class="bg-white rounded-lg shadow-md p-6">
           <h3
