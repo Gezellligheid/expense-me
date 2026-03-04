@@ -167,7 +167,7 @@ const sameDayTransactions = computed(() => {
       }),
     );
 
-  storageService
+  ds.value
     .calculateRecurringExpensesForMonth(ym)
     .filter((e) => e.date === date)
     .forEach((e) =>
@@ -192,7 +192,7 @@ const sameDayTransactions = computed(() => {
       }),
     );
 
-  storageService
+  ds.value
     .calculateRecurringIncomesForMonth(ym)
     .filter((i) => i.date === date)
     .forEach((i) =>
@@ -234,9 +234,9 @@ const toggleSameDayKey = (key: string) => {
 function calcBalanceAtDate(date: string, excludeKeys?: Set<string>): number {
   const dateYM = date.substring(0, 7);
 
-  // Anchor: most recent balance update strictly before this date
+  // Anchor: most recent balance update on or before this date
   const priorUpdates = balanceUpdates.value
-    .filter((u) => u.date < date)
+    .filter((u) => u.date <= date)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   let running: number;
@@ -257,12 +257,8 @@ function calcBalanceAtDate(date: string, excludeKeys?: Set<string>): number {
     ...(afterDate ? [afterDate] : []),
     ...expenses.value.map((e) => e.date.substring(0, 7)),
     ...incomes.value.map((i) => i.date.substring(0, 7)),
-    ...storageService
-      .loadRecurringExpenses()
-      .map((r) => r.startDate.substring(0, 7)),
-    ...storageService
-      .loadRecurringIncomes()
-      .map((r) => r.startDate.substring(0, 7)),
+    ...ds.value.loadRecurringExpenses().map((r) => r.startDate.substring(0, 7)),
+    ...ds.value.loadRecurringIncomes().map((r) => r.startDate.substring(0, 7)),
   ];
   if (allStartDates.length === 0) return running;
 
@@ -292,14 +288,14 @@ function calcBalanceAtDate(date: string, excludeKeys?: Set<string>): number {
       incomes.value
         .filter((i) => txFilter(i.date, txKey("income", i)))
         .reduce((s, i) => s + parseFloat(i.amount || "0"), 0) +
-      storageService
+      ds.value
         .calculateRecurringIncomesForMonth(ym)
         .filter((i) => txFilter(i.date, txKey("income", i)))
         .reduce((s, i) => s + parseFloat(i.amount || "0"), 0) -
       expenses.value
         .filter((e) => txFilter(e.date, txKey("expense", e)))
         .reduce((s, e) => s + parseFloat(e.amount || "0"), 0) -
-      storageService
+      ds.value
         .calculateRecurringExpensesForMonth(ym)
         .filter((e) => txFilter(e.date, txKey("expense", e)))
         .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
@@ -573,7 +569,7 @@ const thisMonthIncome = computed(() => {
   const regular = incomes.value
     .filter((i) => i.date.startsWith(budgetCardYM.value))
     .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
-  const recurring = storageService
+  const recurring = ds.value
     .calculateRecurringIncomesForMonth(budgetCardYM.value)
     .reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
   return regular + recurring;
@@ -585,7 +581,7 @@ const thisMonthExpenses = computed(() => {
       (e) => e.date.startsWith(budgetCardYM.value) && !e.excludeFromBudget,
     )
     .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
-  const recurring = storageService
+  const recurring = ds.value
     .calculateRecurringExpensesForMonth(budgetCardYM.value)
     .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
   return regular + recurring;

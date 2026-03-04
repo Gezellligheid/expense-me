@@ -332,79 +332,86 @@ export const storageService = {
     const month = parts[1] as number;
     const result: Expense[] = [];
 
+    // Build a YYYY-MM-DD string from numeric parts — avoids UTC/local timezone shift
+    const ymd = (y: number, mo: number, d: number): string =>
+      `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = ymd(year, month, 1);
+    const monthEndStr = ymd(year, month, daysInMonth);
+
     recurring.forEach((rec) => {
-      const startDate = new Date(rec.startDate);
-      const endDate = rec.endDate ? new Date(rec.endDate) : null;
-      const monthStart = new Date(year, month - 1, 1);
-      const monthEnd = new Date(year, month, 0);
+      const startStr = rec.startDate;
+      const endStr = rec.endDate ?? null;
 
       // Skip if recurring hasn't started yet or has ended
-      if (startDate > monthEnd || (endDate && endDate < monthStart)) {
+      if (startStr > monthEndStr || (endStr && endStr < monthStartStr)) {
         return;
       }
 
       switch (rec.frequency) {
         case "daily":
-          // Add daily expense for each day in the month
-          for (let day = 1; day <= monthEnd.getDate(); day++) {
-            const date = new Date(year, month - 1, day);
-            if (date >= startDate && (!endDate || date <= endDate)) {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = ymd(year, month, day);
+            if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
               result.push({
                 amount: rec.amount,
                 description: `${rec.description} (Recurring)`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
 
-        case "weekly":
-          // Add weekly expense for each occurrence in the month
-          for (let day = 1; day <= monthEnd.getDate(); day++) {
-            const date = new Date(year, month - 1, day);
+        case "weekly": {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dow = new Date(year, month - 1, day).getDay();
+            const dateStr = ymd(year, month, day);
             if (
-              date.getDay() === rec.dayOfWeek &&
-              date >= startDate &&
-              (!endDate || date <= endDate)
+              dow === rec.dayOfWeek &&
+              dateStr >= startStr &&
+              (!endStr || dateStr <= endStr)
             ) {
               result.push({
                 amount: rec.amount,
                 description: `${rec.description} (Recurring)`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
+        }
 
-        case "monthly":
-          // Add monthly expense once per month on specified day
-          const dayOfMonth = rec.dayOfMonth || 1;
-          const targetDay = Math.min(dayOfMonth, monthEnd.getDate());
-          const date = new Date(year, month - 1, targetDay);
-          if (date >= startDate && (!endDate || date <= endDate)) {
+        case "monthly": {
+          const targetDay = Math.min(rec.dayOfMonth || 1, daysInMonth);
+          const dateStr = ymd(year, month, targetDay);
+          if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
             result.push({
               amount: rec.amount,
               description: `${rec.description} (Recurring)`,
-              date: date.toISOString().split("T")[0]!,
+              date: dateStr,
             });
           }
           break;
+        }
 
-        case "yearly":
-          // Add yearly expense if it falls in this month
-          const recStartMonth = startDate.getMonth() + 1;
-          const recStartDay = startDate.getDate();
-          if (recStartMonth === month) {
-            const date = new Date(year, month - 1, recStartDay);
-            if (date >= startDate && (!endDate || date <= endDate)) {
+        case "yearly": {
+          // Parse start month/day directly from the string to avoid UTC shift
+          const [, startMoStr, startDayStr] = startStr.split("-");
+          const startMo = parseInt(startMoStr!);
+          const startDay = parseInt(startDayStr!);
+          if (startMo === month) {
+            const dateStr = ymd(year, month, startDay);
+            if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
               result.push({
                 amount: rec.amount,
                 description: `${rec.description} (Recurring)`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
+        }
       }
     });
 
@@ -419,84 +426,91 @@ export const storageService = {
     const month = parts2[1] as number;
     const result: Income[] = [];
 
+    // Build a YYYY-MM-DD string from numeric parts — avoids UTC/local timezone shift
+    const ymd = (y: number, mo: number, d: number): string =>
+      `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStartStr = ymd(year, month, 1);
+    const monthEndStr = ymd(year, month, daysInMonth);
+
     recurring.forEach((rec) => {
       // Use the per-month override amount if one exists
       const override = overrides.find(
         (o) => o.recurringId === rec.id && o.yearMonth === yearMonth,
       );
       const effectiveAmount = override ? override.amount : rec.amount;
-      const startDate = new Date(rec.startDate);
-      const endDate = rec.endDate ? new Date(rec.endDate) : null;
-      const monthStart = new Date(year, month - 1, 1);
-      const monthEnd = new Date(year, month, 0);
+      const startStr = rec.startDate;
+      const endStr = rec.endDate ?? null;
 
       // Skip if recurring hasn't started yet or has ended
-      if (startDate > monthEnd || (endDate && endDate < monthStart)) {
+      if (startStr > monthEndStr || (endStr && endStr < monthStartStr)) {
         return;
       }
 
       switch (rec.frequency) {
         case "daily":
-          // Add daily income for each day in the month
-          for (let day = 1; day <= monthEnd.getDate(); day++) {
-            const date = new Date(year, month - 1, day);
-            if (date >= startDate && (!endDate || date <= endDate)) {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = ymd(year, month, day);
+            if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
               result.push({
                 amount: effectiveAmount,
                 description: `${rec.description} (Recurring)`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
 
-        case "weekly":
-          // Add weekly income for each occurrence in the month
-          for (let day = 1; day <= monthEnd.getDate(); day++) {
-            const date = new Date(year, month - 1, day);
+        case "weekly": {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dow = new Date(year, month - 1, day).getDay();
+            const dateStr = ymd(year, month, day);
             if (
-              date.getDay() === rec.dayOfWeek &&
-              date >= startDate &&
-              (!endDate || date <= endDate)
+              dow === rec.dayOfWeek &&
+              dateStr >= startStr &&
+              (!endStr || dateStr <= endStr)
             ) {
               result.push({
                 amount: effectiveAmount,
                 description: `${rec.description} (Recurring)`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
+        }
 
-        case "monthly":
-          // Add monthly income once per month on specified day
-          const dayOfMonth = rec.dayOfMonth || 1;
-          const targetDay = Math.min(dayOfMonth, monthEnd.getDate());
-          const date = new Date(year, month - 1, targetDay);
-          if (date >= startDate && (!endDate || date <= endDate)) {
+        case "monthly": {
+          const targetDay = Math.min(rec.dayOfMonth || 1, daysInMonth);
+          const dateStr = ymd(year, month, targetDay);
+          if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
             result.push({
               amount: effectiveAmount,
               description: `${rec.description} (Recurring)${override ? " ⚡" : ""}`,
-              date: date.toISOString().split("T")[0]!,
+              date: dateStr,
             });
           }
           break;
+        }
 
-        case "yearly":
-          // Add yearly income if it falls in this month
-          const recStartMonth = startDate.getMonth() + 1;
-          const recStartDay = startDate.getDate();
-          if (recStartMonth === month) {
-            const date = new Date(year, month - 1, recStartDay);
-            if (date >= startDate && (!endDate || date <= endDate)) {
+        case "yearly": {
+          // Parse start month/day directly from the string to avoid UTC shift
+          const [, startMoStr, startDayStr] = startStr.split("-");
+          const startMo = parseInt(startMoStr!);
+          const startDay = parseInt(startDayStr!);
+          if (startMo === month) {
+            const dateStr = ymd(year, month, startDay);
+            if (dateStr >= startStr && (!endStr || dateStr <= endStr)) {
               result.push({
                 amount: effectiveAmount,
                 description: `${rec.description} (Recurring)${override ? " ⚡" : ""}`,
-                date: date.toISOString().split("T")[0]!,
+                date: dateStr,
               });
             }
           }
           break;
+        }
       }
     });
 
