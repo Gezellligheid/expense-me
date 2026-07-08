@@ -8,6 +8,14 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import Groq from "groq-sdk";
+import {
+  handleAspsps,
+  handleConnect,
+  handleExchange,
+  handleStatus,
+  handleSync,
+  handleDisconnect,
+} from "./lib/bankHandlers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -461,6 +469,39 @@ Output ONLY the JSON array. No text, no markdown.`;
       console.error("AI projection error:", err);
       res.status(500).json({ error: "Failed to generate AI projection" });
     }
+  });
+
+  // ── Enable Banking routes ─────────────────────────────────────────────────
+  app.get("/api/bank/aspsps", async (req, res) => {
+    const { status, body } = await handleAspsps({
+      country: typeof req.query.country === "string" ? req.query.country : undefined,
+    });
+    res.status(status).json(body);
+  });
+
+  app.post("/api/bank/connect", async (req, res) => {
+    const { status, body } = await handleConnect(req.headers.authorization, req.body);
+    res.status(status).json(body);
+  });
+
+  app.post("/api/bank/exchange", async (req, res) => {
+    const { status, body } = await handleExchange(req.headers.authorization, req.body);
+    res.status(status).json(body);
+  });
+
+  app.get("/api/bank/status", async (req, res) => {
+    const { status, body } = await handleStatus(req.headers.authorization);
+    res.status(status).json(body);
+  });
+
+  app.post("/api/bank/sync", async (req, res) => {
+    const { status, body } = await handleSync(req.headers.authorization);
+    res.status(status).json(body);
+  });
+
+  app.post("/api/bank/disconnect", async (req, res) => {
+    const { status, body } = await handleDisconnect(req.headers.authorization);
+    res.status(status).json(body);
   });
 
   // ── Static assets / Vite middleware ───────────────────────────────────────

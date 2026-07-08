@@ -14,6 +14,7 @@ import {
   migrateLocalStorage,
 } from "../services/cloudSyncService";
 import { useAuth } from "../composables/useAuth";
+import { bankService, type Aspsp, type BankStatus } from "../services/bankService";
 
 const {
   currencyCode,
@@ -126,6 +127,134 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("storage-updated", refreshStats);
+});
+
+// ── Bank Connection (Enable Banking) ────────────────────────────────────────
+const BANK_COUNTRIES = [
+  { code: "AT", name: "Austria" },
+  { code: "BE", name: "Belgium" },
+  { code: "BG", name: "Bulgaria" },
+  { code: "HR", name: "Croatia" },
+  { code: "CY", name: "Cyprus" },
+  { code: "CZ", name: "Czechia" },
+  { code: "DK", name: "Denmark" },
+  { code: "EE", name: "Estonia" },
+  { code: "FI", name: "Finland" },
+  { code: "FR", name: "France" },
+  { code: "DE", name: "Germany" },
+  { code: "GR", name: "Greece" },
+  { code: "HU", name: "Hungary" },
+  { code: "IE", name: "Ireland" },
+  { code: "IT", name: "Italy" },
+  { code: "LV", name: "Latvia" },
+  { code: "LT", name: "Lithuania" },
+  { code: "LU", name: "Luxembourg" },
+  { code: "MT", name: "Malta" },
+  { code: "NL", name: "Netherlands" },
+  { code: "NO", name: "Norway" },
+  { code: "PL", name: "Poland" },
+  { code: "PT", name: "Portugal" },
+  { code: "RO", name: "Romania" },
+  { code: "SK", name: "Slovakia" },
+  { code: "SI", name: "Slovenia" },
+  { code: "ES", name: "Spain" },
+  { code: "SE", name: "Sweden" },
+  { code: "GB", name: "United Kingdom" },
+];
+
+const bankStatus = ref<BankStatus | null>(null);
+const bankLoading = ref(true);
+const bankError = ref("");
+
+const bankCountry = ref("NL");
+const bankAspsps = ref<Aspsp[]>([]);
+const bankAspspsLoading = ref(false);
+const bankSearch = ref("");
+const bankConnecting = ref(false);
+
+const bankSyncing = ref(false);
+const bankSyncResult = ref<{ imported: number; skipped: number } | null>(null);
+const bankDisconnecting = ref(false);
+const confirmDisconnect = ref(false);
+
+const filteredAspsps = computed(() => {
+  const q = bankSearch.value.toLowerCase().trim();
+  if (!q) return bankAspsps.value;
+  return bankAspsps.value.filter((a) => a.name.toLowerCase().includes(q));
+});
+
+const loadAspsps = async () => {
+  bankAspspsLoading.value = true;
+  bankError.value = "";
+  try {
+    bankAspsps.value = await bankService.listAspsps(bankCountry.value);
+  } catch (err) {
+    bankError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    bankAspspsLoading.value = false;
+  }
+};
+
+const loadBankStatus = async () => {
+  bankLoading.value = true;
+  bankError.value = "";
+  try {
+    bankStatus.value = await bankService.status();
+    if (!bankStatus.value.connected) void loadAspsps();
+  } catch (err) {
+    bankError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    bankLoading.value = false;
+  }
+};
+
+const connectBank = async (aspsp: Aspsp) => {
+  bankConnecting.value = true;
+  bankError.value = "";
+  try {
+    const url = await bankService.connect(aspsp.name, aspsp.country);
+    window.location.href = url;
+  } catch (err) {
+    bankError.value = err instanceof Error ? err.message : String(err);
+    bankConnecting.value = false;
+  }
+};
+
+const syncBankNow = async () => {
+  bankSyncing.value = true;
+  bankError.value = "";
+  bankSyncResult.value = null;
+  try {
+    bankSyncResult.value = await bankService.syncNow();
+    refreshStats();
+  } catch (err) {
+    bankError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    bankSyncing.value = false;
+  }
+};
+
+const disconnectBank = async () => {
+  if (!confirmDisconnect.value) {
+    confirmDisconnect.value = true;
+    return;
+  }
+  bankDisconnecting.value = true;
+  bankError.value = "";
+  try {
+    await bankService.disconnect();
+    bankStatus.value = { connected: false };
+    confirmDisconnect.value = false;
+    void loadAspsps();
+  } catch (err) {
+    bankError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    bankDisconnecting.value = false;
+  }
+};
+
+onMounted(() => {
+  void loadBankStatus();
 });
 
 // ── Data Management ───────────────────────────────────────────────────────────
@@ -454,6 +583,160 @@ const exportAll = () => {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ── Bank Connection (Enable Banking) ─────────────────────────────── -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+      <h3 class="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+        <span class="text-xl">🏦</span>
+        Bank Connection
+      </h3>
+      <p class="text-sm text-gray-500 mb-4">
+        Connect your bank via
+        <a
+          href="https://enablebanking.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-indigo-600 hover:underline"
+          >Enable Banking</a
+        >
+        to automatically import real transactions.
+      </p>
+
+      <div v-if="bankLoading" class="text-sm text-gray-400 py-4 text-center">
+        Loading…
+      </div>
+
+      <template v-else>
+        <!-- Connected -->
+        <div v-if="bankStatus?.connected" class="space-y-4">
+          <div
+            class="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+          >
+            <div>
+              <p class="font-semibold text-emerald-800 text-sm">
+                {{ bankStatus.aspspName }} ({{ bankStatus.aspspCountry }})
+              </p>
+              <p class="text-xs text-emerald-600 mt-0.5">
+                Connected
+                {{
+                  bankStatus.connectedAt
+                    ? new Date(bankStatus.connectedAt).toLocaleDateString()
+                    : ""
+                }}
+                · {{ bankStatus.accounts?.length ?? 0 }} account(s)
+              </p>
+            </div>
+            <span class="text-2xl">✅</span>
+          </div>
+
+          <div v-if="bankStatus.accounts?.length" class="space-y-1">
+            <div
+              v-for="acc in bankStatus.accounts"
+              :key="acc.uid"
+              class="flex justify-between text-xs bg-gray-50 px-3 py-2 rounded-lg"
+            >
+              <span class="text-gray-600">{{
+                acc.name ?? acc.iban ?? "Account"
+              }}</span>
+              <span class="font-mono text-gray-500">{{ acc.currency }}</span>
+            </div>
+          </div>
+
+          <div
+            v-if="bankSyncResult"
+            class="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg px-3 py-2"
+          >
+            Imported {{ bankSyncResult.imported }} new transaction(s), skipped
+            {{ bankSyncResult.skipped }} already-known.
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              @click="syncBankNow"
+              :disabled="bankSyncing"
+              class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+            >
+              {{ bankSyncing ? "Syncing…" : "🔄 Sync Now" }}
+            </button>
+            <button
+              @click="disconnectBank"
+              :disabled="bankDisconnecting"
+              class="flex-1 py-2.5 border-2 rounded-lg text-sm font-semibold transition-colors"
+              :class="
+                confirmDisconnect
+                  ? 'border-red-500 bg-red-50 text-red-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              "
+            >
+              {{
+                bankDisconnecting
+                  ? "Disconnecting…"
+                  : confirmDisconnect
+                    ? "Confirm Disconnect?"
+                    : "Disconnect"
+              }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Disconnected -->
+        <div v-else class="space-y-3">
+          <select
+            v-model="bankCountry"
+            @change="loadAspsps"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          >
+            <option v-for="c in BANK_COUNTRIES" :key="c.code" :value="c.code">
+              {{ c.name }}
+            </option>
+          </select>
+
+          <input
+            v-model="bankSearch"
+            type="text"
+            placeholder="Search your bank…"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+          />
+
+          <div class="max-h-56 overflow-y-auto space-y-1 pr-1">
+            <div
+              v-if="bankAspspsLoading"
+              class="text-center text-gray-400 text-sm py-4"
+            >
+              Loading banks…
+            </div>
+            <button
+              v-for="a in filteredAspsps"
+              :key="`${a.country}-${a.name}`"
+              @click="connectBank(a)"
+              :disabled="bankConnecting"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-gray-50 disabled:opacity-50 text-sm text-gray-700"
+            >
+              <img
+                v-if="a.logo"
+                :src="a.logo"
+                class="w-6 h-6 rounded object-contain"
+                alt=""
+              />
+              <span class="flex-1">{{ a.name }}</span>
+            </button>
+            <p
+              v-if="!bankAspspsLoading && filteredAspsps.length === 0"
+              class="text-center text-gray-400 py-4 text-sm"
+            >
+              No banks match "{{ bankSearch }}"
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <p
+        v-if="bankError"
+        class="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+      >
+        ⚠️ {{ bankError }}
+      </p>
     </div>
 
     <!-- ── Developer: View Another User ─────────────────────────────────── -->

@@ -118,6 +118,11 @@ async function handleSignIn() {
       <p class="text-xs text-gray-400 dark:text-gray-600 mt-8">
         Your data is stored securely and synced in real time.
       </p>
+      <p class="text-xs text-gray-400 dark:text-gray-600 mt-2">
+        <router-link to="/privacy" class="hover:underline">Privacy Policy</router-link>
+        <span class="mx-1.5">·</span>
+        <router-link to="/terms" class="hover:underline">Terms of Use</router-link>
+      </p>
     </div>
   </div>
 </template>

@@ -22,6 +22,9 @@ export interface Expense {
   description: string;
   date: string;
   excludeFromBudget?: boolean;
+  /** Dedupe key for bank-imported transactions; absent for manual entries. */
+  externalId?: string;
+  source?: "bank";
   _sim?: true;
 }
 
@@ -29,6 +32,9 @@ export interface Income {
   amount: string;
   description: string;
   date: string;
+  /** Dedupe key for bank-imported transactions; absent for manual entries. */
+  externalId?: string;
+  source?: "bank";
   _sim?: true;
 }
 

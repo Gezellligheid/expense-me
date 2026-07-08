@@ -35,7 +35,25 @@ const routes: RouteRecordRaw[] = [
     name: "quick-add",
     component: () => import("../views/QuickAdd.vue"),
   },
+  {
+    path: "/bank/callback",
+    name: "bank-callback",
+    component: () => import("../views/BankCallback.vue"),
+  },
+  {
+    path: "/privacy",
+    name: "privacy",
+    component: () => import("../views/Privacy.vue"),
+  },
+  {
+    path: "/terms",
+    name: "terms",
+    component: () => import("../views/Terms.vue"),
+  },
 ];
+
+/** Routes reachable without signing in (e.g. legal pages reviewers/users need pre-login). */
+export const PUBLIC_ROUTE_NAMES = new Set(["privacy", "terms"]);
 
 const router = createRouter({
   history: createWebHistory(),

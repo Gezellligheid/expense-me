@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { watch, onMounted } from "vue";
-import { RouterView } from "vue-router";
+import { watch, onMounted, computed } from "vue";
+import { RouterView, useRoute } from "vue-router";
 import Navbar from "./components/navbar/Navbar.vue";
 import Login from "./views/Login.vue";
 import { useSettings } from "./composables/useSettings";
@@ -8,11 +8,16 @@ import { useAuth } from "./composables/useAuth";
 import { useSidebar } from "./composables/useSidebar";
 import { useSimulation } from "./composables/useSimulation";
 import { Analytics } from "@vercel/analytics/nuxt";
+import { PUBLIC_ROUTE_NAMES } from "./router/router";
 
 const { theme, initTheme } = useSettings();
 const { user, isLoadingAuth } = useAuth();
 const { isCollapsed } = useSidebar();
 const { isSimulating, acceptSimulation, rejectSimulation } = useSimulation();
+const route = useRoute();
+const isPublicRoute = computed(
+  () => typeof route.name === "string" && PUBLIC_ROUTE_NAMES.has(route.name),
+);
 
 onMounted(() => {
   initTheme();
@@ -24,10 +29,13 @@ watch(theme, () => {
 </script>
 
 <template>
-  <!-- Auth loading -->
+  <!-- Public pages (legal/reviewer-facing) — reachable without signing in -->
   <Analytics />
+  <RouterView v-if="isPublicRoute" />
+
+  <!-- Auth loading -->
   <div
-    v-if="isLoadingAuth"
+    v-else-if="isLoadingAuth"
     class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"
   >
     <svg
